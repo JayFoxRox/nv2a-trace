@@ -35,7 +35,7 @@ There is currently no parsable trace-file output, and replaying traces is not po
 ### Usage
 
 This project uses [xboxpy](https://github.com/XboxDev/xboxpy).
-Please read its documentation to find out how to configure it for your Xbox.
+Please read its documentation to find out how to install and configure it for your Xbox.
 
 Afterwards, you can run these commands:
 
