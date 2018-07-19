@@ -42,7 +42,7 @@ Afterwards, you can run these commands:
 ```
 git clone https://github.com/XboxDev/nv2a-trace.git
 cd nv2a-trace
-python3 nv2a-trace.py
+python3 -u nv2a-trace.py
 ```
 
 The last line will run nv2a-trace and connect to your Xbox.
