@@ -1,4 +1,4 @@
-#!/usr/bin/env python3 -u
+#!/usr/bin/python3 -u
 
 from xboxpy import *
 
@@ -9,6 +9,7 @@ try:
 except:
   pass
 
+import json
 import time
 import signal
 import sys
@@ -414,6 +415,71 @@ def main():
       continue
 
     break
+  
+
+  injection_addr = 0
+
+  # Test injection
+  if len(sys.argv) >= 2:
+    try:
+
+      # Allocate 4MB of memory for the command stream
+      #FIXME: Avoid failed allocations
+      size = 4 * 1024 * 1024
+      injection_addr = ke.MmAllocateContiguousMemory(size)
+
+      input_file = sys.argv[1]
+
+      print("Wanted to inject '%s'" % input_file)
+      input_file_contents = open(input_file, 'r').read()
+      command_log = json.loads(input_file_contents)
+      #print(command_log)
+
+      addr = injection_addr
+
+      for command_log_entry in command_log:
+        print(command_log_entry)
+
+        # Reconstruct the command word
+        word = int(command_log_entry['method'],16)
+        word |= int(command_log_entry['subchannel'],16) << 13
+        word |= len(command_log_entry['data']) << 18
+        if command_log_entry['non_increasing']:
+          word |= 0x40000000
+
+        # Now inject the command word and all method data
+        #FIXME: Avoid overflows of buffer
+        command_addr = addr
+        write_u32(addr, word)
+        addr += 4
+        for data in command_log_entry['data']:
+          v = int(data, 16)
+          write_u32(addr, v)
+          addr += 4
+
+      # Jump to the start of the real buffer again
+      write_u32(addr, v_dma_get_addr | 1)
+      addr += 4
+        #v_dma_get_addr
+
+      # Setup playback by jumping to our injection addr
+      if True:
+        # Inject a jump (overwrites a command)
+        v_dma_get_addr = ke.MmGetPhysicalAddress(injection_addr)
+
+        write_u32(dma_get_addr, v_dma_get_addr)
+        write_u32(dma_put_addr, v_dma_get_addr)
+
+    # Catches any errors so we don't leave the GPU in a bad state.
+    # We'll force quit now though
+    except Exception as err:
+      traceback.print_exc()
+      abortNow = True
+
+    # Quit asap
+    #abortNow = True
+
+    
    
   print("\n\nStepping through PB\n\n")
 
@@ -529,6 +595,10 @@ def main():
   commandCount = Trace.recordedPushBufferCommandCount()
   
   print("Recorded %d flip stalls and %d PB commands (%.2f commands / second)" % (flipStallCount, commandCount, commandCount / duration))
+
+  # Free injection memory
+  if injection_addr != 0:
+    ke.MmFreeContiguousMemory(injection_addr)
 
 if __name__ == '__main__':
   main()

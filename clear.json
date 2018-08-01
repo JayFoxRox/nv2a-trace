@@ -1,0 +1,29 @@
+[
+  {
+    "comment": "Set the clear color to pink",
+    "method": "0x1D90",
+    "subchannel": "0x0",
+    "non_increasing": false,
+    "data": [
+      "0x00FF00FF"
+    ]
+  },
+  {
+    "comment": "Clears the image",
+    "method": "0x1D94",
+    "subchannel": "0x0",
+    "non_increasing": false,
+    "data": [
+      "0x000000F0"
+    ]
+  },
+  {
+    "comment": "This one is meant as a no-op. It's only used for dumping the image",
+    "method": "0x1D94",
+    "subchannel": "0x0",
+    "non_increasing": false,
+    "data": [
+      "0x00000000"
+    ]
+  }
+]

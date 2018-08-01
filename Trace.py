@@ -1,5 +1,6 @@
 import os
 import struct
+import json
 
 import Texture
 
@@ -7,6 +8,8 @@ StateDumping = True
 
 commandCount = 0
 flipStallCount = 0
+
+command_log = []
 
 
 debugLog = os.path.join("out", "debug.html")
@@ -91,10 +94,11 @@ def recordPGRAPHMethod(xbox, method, data):
     #FIXME: Mabye in PGRAPH: 0x00400828 ? [modified by command]
     color_offset = data
 
-  if method == 0x17fc:
+  if method == 0x17fc or method == 0x1D94:
     if StateDumping:
-      print("Set begin end")
-      if data != 0:
+      print("Set begin end OR clear")
+
+      if method == 0x17fc and data != 0:
         # Dump textures
         for i in range(4):
           path = "command%d--tex_%d.png" % (commandCount, i)
@@ -166,6 +170,7 @@ def recordPGRAPHMethod(xbox, method, data):
 def recordPushBufferCommand(xbox, v_dma_get_addr):
   global commandCount
   global pgraph_dump
+  global command_log
 
   # Debug feature to understand PGRAPH
   if pgraph_dump != None:
@@ -288,7 +293,14 @@ def recordPushBufferCommand(xbox, v_dma_get_addr):
 
     # Download this command from Xbox
     command = xbox.read(0x80000000 | (v_dma_get_addr + 4), method_count * 4)
-    
+
+    # Start logging by recording all words for this command
+    command_data = {}
+    command_data['method'] = "0x%04X" % method
+    command_data['subchannel'] = "0x%01X" % subchannel
+    command_data['non_increasing'] = bool(method_nonincreasing)
+    command_data['data'] = []
+
     for method_index in range(method_count):
 
       data = struct.unpack_from("<L", command, method_index * 4)[0]
@@ -297,10 +309,17 @@ def recordPushBufferCommand(xbox, v_dma_get_addr):
       if not method_nonincreasing:
         method += 4
 
+      command_data['data'] += ["0x%08X" % data]
+
+    command_log += [command_data]
+
   if pgraph_dump != None:
     addHTML(["", "", "", "", "Dumped PGRAPH for later"])
 
   commandCount += 1
+
+  with open('pb_commands.json', 'w') as outfile:
+    json.dump(command_log, outfile, indent=2)
 
 def recordedFlipStallCount():
   global flipStallCount
