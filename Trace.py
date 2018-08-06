@@ -5,7 +5,7 @@ import Texture
 
 from helper import *
 
-PixelDumping = True
+PixelDumping = False
 DebugPrint = False
 
 commandCount = 0
@@ -583,11 +583,9 @@ def processPushBufferCommands(xbox, get_addr, put_addr):
 
   sched_post_callbacks = []
 
-  timeout = 0
-
   addHTML(["WARNING", "Starting FIFO trace from 0x%08X -- 0x%08X" % (get_addr, put_addr)])
 
-  while parser_addr != put_addr:
+  if parser_addr != put_addr:
 
     # Filter commands and check where it wants to go to
     method_info, post_addr = parsePushBufferCommand(xbox, parser_addr)
@@ -595,30 +593,19 @@ def processPushBufferCommands(xbox, get_addr, put_addr):
     # We have a problem if we can't tell where to go next
     assert(post_addr != 0)
 
-    # If we have simulated too many instructions without running, we just run
-    if timeout > 200:
-      addHTML(["WARNING", "Flushing to FIFO due to %d unprocessed commands" % timeout])
-      put_addr = run_fifo(xbox, parser_addr, put_addr)
-      timeout = 0
-
     # If we have a method, work with it
     if method_info is None:
 
       addHTML(["WARNING", "No method. Going to 0x%08X" % post_addr])
-
-      # Consider this as 1 instruction (not an exact science: arbitrary pick)
-      timeout += 1
+      unprocessed_bytes = 4
 
     else:
 
       # Check what method this is
       pre_callbacks, post_callbacks = filterPushBufferCommand(xbox, method_info)
 
-
-      def foo(xbox, data, *args):
-        return []
-      #pre_callbacks = [] #[foo]
-      #post_callbacks = #[]
+      # Count number of bytes in instruction
+      unprocessed_bytes = 4 * (1 + len(method_info['data']))
 
       # Go where we can do pre-callback
       pre_info = []
@@ -626,7 +613,6 @@ def processPushBufferCommands(xbox, get_addr, put_addr):
       
         # Go where we want to go
         put_addr = run_fifo(xbox, parser_addr, put_addr)
-        timeout = 0
 
         # Do the pre callbacks before running the command
         #FIXME: assert we are where we wanted to be
@@ -643,7 +629,9 @@ def processPushBufferCommands(xbox, get_addr, put_addr):
 
         # Go where we want to go (equivalent to step)
         put_addr = run_fifo(xbox, post_addr, put_addr)
-        timeout = 0
+
+        # We have processed all bytes now
+        unprocessed_bytes = 0
 
         # Do all post callbacks
         for callback in post_callbacks:
@@ -652,16 +640,14 @@ def processPushBufferCommands(xbox, get_addr, put_addr):
 
       # Add the pushbuffer command to log
       recordPushBufferCommand(xbox, parser_addr, method_info, pre_info, post_info)
-    
-      # Count number of simulated instructions
-      timeout += 1 + len(method_info['data'])
+
 
     # Move parser to the next instruction
     parser_addr = post_addr
 
   addHTML(["WARNING", "Sucessfully finished FIFO trace 0x%08X -- 0x%08X" % (parser_addr, put_addr)])
 
-  return parser_addr, put_addr
+  return parser_addr, put_addr, unprocessed_bytes
 
 def recordedFlipStallCount():
   global flipStallCount
@@ -699,13 +685,12 @@ methodHooks(0x97, 0x17FC, [HandleBegin],    [HandleEnd])       # BEGIN_END
 #for i in range(4):
 #  methodHooks(0x1B00 + 64 * i, [],    [HandleSetTexture], i)
 
-methodHooks(0x9F, 0x0310, [DumpBlitSource], [DumpBlitDest])    # NV09F_SIZE
-
 # Add the list of commands which might trigger CPU actions
 methodHooks(0x97, 0x0100, [],               [CheckTarget])     # NOP
 methodHooks(0x97, 0x0130, [],               [CheckTarget,      # FLIP_STALL
                                              HandleFlipStall])
-methodHooks(0x97, 0x1D70, [],               [CheckTarget])     # BACK_END_WRITE_SEMAPHORE_RELEASE
+methodHooks(0x97, 0x1D70, [],               [CheckTarget,      # BACK_END_WRITE_SEMAPHORE_RELEASE
+                                             DumpSurfaces])
 
 
 

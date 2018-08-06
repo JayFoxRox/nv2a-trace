@@ -108,26 +108,39 @@ def main():
   # Start measuring time
   begin_time = time.monotonic()
 
+  bytes_queued = 0
+
   # Step through the PB until we finish.
-  while(v_dma_get_addr != v_dma_put_addr_real):
+  while not abortNow:
 
     # Check if the user wants to exit first
     if abortNow:
-      xbox.write_u32(dma_put_addr, v_dma_put_addr_real)
       break
 
     # Loop until we hit an instruction we have to filter
     try:
 
-      # Verify we are where we think we are
-      v_dma_get_addr_real = xbox.read_u32(dma_get_addr)
-      assert(v_dma_get_addr == v_dma_get_addr_real)
+      v_dma_get_addr, v_dma_put_addr_real, unprocessed_bytes = Trace.processPushBufferCommands(xbox, v_dma_get_addr, v_dma_put_addr_real)
+      bytes_queued += unprocessed_bytes
 
-      v_dma_get_addr, v_dma_put_addr_real = Trace.processPushBufferCommands(xbox, v_dma_get_addr, v_dma_put_addr_real)
+      # Avoid queuing up too many bytes
+      if unprocessed_bytes >= 1000:
+        print("Flushing buffer")
+        v_dma_put_addr_real = Trace.run_fifo(xbox, v_dma_get_addr, v_dma_put_addr_real)
+        unprocessed_bytes = 0
+
+      # Verify we are where we think we are
+      if unprocessed_bytes == 0:
+        print("Verifying buffer")
+        v_dma_get_addr_real = xbox.read_u32(dma_get_addr)
+        assert(v_dma_get_addr == v_dma_get_addr_real)
+
     except:
       traceback.print_exc()
       abortNow = True
 
+  # Recover the real address
+  xbox.write_u32(dma_put_addr, v_dma_put_addr_real)
 
   print("\n\nFinished PB\n\n")
 
