@@ -5,7 +5,7 @@ import Texture
 
 from helper import *
 
-PixelDumping = False
+PixelDumping = True
 DebugPrint = False
 
 commandCount = 0
@@ -59,6 +59,15 @@ def dumpPGRAPH(xbox):
 def DumpVertexAttributes():
   pass
 
+def DumpBlitSource(xbox, data, *args):
+  pass
+  return []
+
+def DumpBlitDest(xbox, data, *args):
+  pass
+  return []
+
+
 def DumpTextures(xbox, data, *args):
   global PixelDumping
   if not PixelDumping:
@@ -96,7 +105,7 @@ def DumpSurfaces(xbox, data, *args):
 
   #FIXME: This does not seem to be a good field for this
   #FIXME: Patched to give 50% of coolness
-  swizzled = commandCount & 1 #((surface_type & 3) == 1)
+  swizzled = True #commandCount & 1 #((surface_type & 3) == 1)
   #FIXME: if surface_type is 0, we probably can't even draw..
 
   color_fmt = (draw_format >> 12) & 0xF
@@ -432,9 +441,10 @@ def run_fifo(xbox, put_addr, v_dma_put_addr_real):
 
 
 
-  #FIXME: we can save this read in some cases, as we should know where we are
+  #FIXME: we can avoid this read in some cases, as we should know where we are
   v_dma_get_addr = xbox.read_u32(dma_get_addr)
 
+  addHTML(["WARNING", "Running FIFO (GET: 0x%08X -- PUT: 0x%08X / 0x%08X)" % (v_dma_get_addr, put_addr, v_dma_put_addr_real)])
 
   # Loop while this command is being ran.
   # This is necessary because a whole command might not fit into CACHE.
@@ -491,7 +501,7 @@ def parsePushBufferCommand(xbox, get_addr):
 
   # Retrieve command type from Xbox
   word = xbox.read_u32(0x80000000 | get_addr)
-
+  addHTML(["", "", "", "@0x%08X: DATA: 0x%08X" % (get_addr, word)])
 
   #FIXME: Get where this command ends
   next_parser_addr = parseCommand(get_addr, word, DebugPrint)
@@ -549,10 +559,19 @@ def filterPushBufferCommand(xbox, method_info):
 def recordPushBufferCommand(xbox, address, method_info, pre_info, post_info):
   global commandCount
 
+  orig_method = method_info['method']
+
   # Put info in debug HTML
   addHTML(["%d" % commandCount, "%s" % method_info])
   for data in method_info['data']:
+
     recordPGRAPHMethod(xbox, method_info, data, pre_info, post_info)
+
+    if not method_info['nonincreasing']:
+      method_info['method'] += 4
+
+  #FIXME: Is this necessary? are dicts passed by value in python?
+  method_info['method'] = orig_method
 
   commandCount += 1
 
@@ -566,19 +585,20 @@ def processPushBufferCommands(xbox, get_addr, put_addr):
 
   timeout = 0
 
+  addHTML(["WARNING", "Starting FIFO trace from 0x%08X -- 0x%08X" % (get_addr, put_addr)])
+
   while parser_addr != put_addr:
 
     # Filter commands and check where it wants to go to
     method_info, post_addr = parsePushBufferCommand(xbox, parser_addr)
 
     # We have a problem if we can't tell where to go next
-    if post_addr == 0:
-      return 0
+    assert(post_addr != 0)
 
     # If we have simulated too many instructions without running, we just run
-    if timeout > 10:
-      put_addr = run_fifo(xbox, parser_addr, put_addr)
+    if timeout > 200:
       addHTML(["WARNING", "Flushing to FIFO due to %d unprocessed commands" % timeout])
+      put_addr = run_fifo(xbox, parser_addr, put_addr)
       timeout = 0
 
     # If we have a method, work with it
@@ -636,10 +656,10 @@ def processPushBufferCommands(xbox, get_addr, put_addr):
       # Count number of simulated instructions
       timeout += 1 + len(method_info['data'])
 
-      # Move parser to the next instruction
-      parser_addr = post_addr
+    # Move parser to the next instruction
+    parser_addr = post_addr
 
-
+  addHTML(["WARNING", "Sucessfully finished FIFO trace 0x%08X -- 0x%08X" % (parser_addr, put_addr)])
 
   return parser_addr, put_addr
 
@@ -664,7 +684,7 @@ def recordedPushBufferCommandCount():
 
 
 
-def methodHooks(method, pre_hooks, post_hooks, user = None):
+def methodHooks(obj, method, pre_hooks, post_hooks, user = None):
   global method_callbacks
   print("Registering method hook for 0x%04X" % method)
   method_callbacks[method] = (pre_hooks, post_hooks)
@@ -672,25 +692,20 @@ def methodHooks(method, pre_hooks, post_hooks, user = None):
 
 
 
-methodHooks(0x1D94, [],               [DumpSurfaces])    # CLEAR
-methodHooks(0x17FC, [HandleBegin],    [HandleEnd])  # BEGIN_END
-
-#FIXME: These shouldn't be necessary, but I can't find this address in PGRAPH
-#methodHooks(0x0200, [],               [updateSurfaceClipX])
-#methodHooks(0x0204, [],               [updateSurfaceClipY])
-#methodHooks(0x0208, [],               [updateSurfaceFormat])
-#methodHooks(0x020C, [],               [updateSurfacePitch])
-#methodHooks(0x0210, [],               [updateSurfaceAddress])
+methodHooks(0x97, 0x1D94, [],               [DumpSurfaces])    # CLEAR
+methodHooks(0x97, 0x17FC, [HandleBegin],    [HandleEnd])       # BEGIN_END
 
 # Check for texture address changes
 #for i in range(4):
 #  methodHooks(0x1B00 + 64 * i, [],    [HandleSetTexture], i)
 
+methodHooks(0x9F, 0x0310, [DumpBlitSource], [DumpBlitDest])    # NV09F_SIZE
+
 # Add the list of commands which might trigger CPU actions
-methodHooks(0x0100, [],               [CheckTarget])     # NOP
-methodHooks(0x0130, [],               [CheckTarget,      # FLIP_STALL
-                                       HandleFlipStall])
-methodHooks(0x1D70, [],               [CheckTarget])     # BACK_END_WRITE_SEMAPHORE_RELEASE
+methodHooks(0x97, 0x0100, [],               [CheckTarget])     # NOP
+methodHooks(0x97, 0x0130, [],               [CheckTarget,      # FLIP_STALL
+                                             HandleFlipStall])
+methodHooks(0x97, 0x1D70, [],               [CheckTarget])     # BACK_END_WRITE_SEMAPHORE_RELEASE
 
 
 

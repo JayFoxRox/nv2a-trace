@@ -116,11 +116,14 @@ def main():
       xbox.write_u32(dma_put_addr, v_dma_put_addr_real)
       break
 
-    print("@0x%08X; wants to be at 0x%08X" % (v_dma_get_addr, v_dma_put_addr_target))
-
     # Loop until we hit an instruction we have to filter
     try:
-      v_dma_put_addr_target, v_dma_put_addr_real = Trace.processPushBufferCommands(xbox, v_dma_get_addr, v_dma_put_addr_real)
+
+      # Verify we are where we think we are
+      v_dma_get_addr_real = xbox.read_u32(dma_get_addr)
+      assert(v_dma_get_addr == v_dma_get_addr_real)
+
+      v_dma_get_addr, v_dma_put_addr_real = Trace.processPushBufferCommands(xbox, v_dma_get_addr, v_dma_put_addr_real)
     except:
       traceback.print_exc()
       abortNow = True
