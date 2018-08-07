@@ -105,6 +105,10 @@ def DumpSurfaces(xbox, data, *args):
   surface_type = xbox.read_u32(0xFD400710)
   swizzle_unk = xbox.read_u32(0xFD400818)
 
+  swizzle_unk2 = xbox.read_u32(0xFD40086c)
+
+  #FIXME: 128 x 128 [pitch = 256 (0x100)], at 0x01AA8000 [PGRAPH: 0x01AA8000?], format 0x5, type: 0x21000002, swizzle: 0x7070000 [used 0]
+
   #FIXME: This does not seem to be a good field for this
   #FIXME: Patched to give 50% of coolness
   swizzled = True #commandCount & 1 #((surface_type & 3) == 1)
@@ -137,7 +141,7 @@ def DumpSurfaces(xbox, data, *args):
   path = "command%d--color.png" % (commandCount)
   extraHTML = []
   extraHTML += ['<img height="128px" src="%s" alt="%s"/>' % (path, path)]
-  extraHTML += ['%d x %d [pitch = %d (0x%X)], at 0x%08X [PGRAPH: 0x%08X?], format 0x%X, type: 0x%X, swizzle: 0x%X [used %d]' % (width, height, pitch, pitch, offset, surface_color_offset, color_fmt, surface_type, swizzle_unk, swizzled)]
+  extraHTML += ['%d x %d [pitch = %d (0x%X)], at 0x%08X [PGRAPH: 0x%08X?], format 0x%X, type: 0x%X, swizzle: 0x%08X, 0x%08X [used %d]' % (width, height, pitch, pitch, offset, surface_color_offset, color_fmt, surface_type, swizzle_unk, swizzle_unk2, swizzled)]
   print(extraHTML[-1])
 
   img = Texture.dumpTexture(xbox, offset, pitch, fmt_color, width, height)

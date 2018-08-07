@@ -26,7 +26,7 @@ Additionally a "debug.html" will be created which shows the captured commands.
 This output format is a temporary solution.
 Eventually there'll be one of the following:
 
-* GUI, and tracing and UI will be largely decoupled.
+* GUI. Tracing and UI will be decoupled.
 * Parsable output ASCII format which automatically acts as UI.
 
 There is currently no parsable trace-file output, and replaying traces is not possible.
@@ -53,6 +53,6 @@ If this tool does not work, please retry a couple of times.
 
 ---
 
-(c)2018 XboxDev maintainers
+**&copy; 2018 XboxDev maintainers**
 
 All rights reserved.
