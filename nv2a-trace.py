@@ -113,27 +113,40 @@ def main():
   # Step through the PB until we abort
   while not abortNow:
 
-    # Loop until we hit an instruction we have to filter
     try:
 
       v_dma_get_addr, v_dma_put_addr_real, unprocessed_bytes = Trace.processPushBufferCommands(xbox, v_dma_get_addr, v_dma_put_addr_real)
       bytes_queued += unprocessed_bytes
 
+      if v_dma_get_addr == v_dma_put_addr_real:
+        break
+
+      #time.sleep(0.5)
+
       # Avoid queuing up too many bytes
-      if unprocessed_bytes >= 1000:
+      if v_dma_get_addr == v_dma_put_addr_real or bytes_queued >= 200:
         print("Flushing buffer until (0x%08X)" % v_dma_get_addr)
         v_dma_put_addr_real = Trace.run_fifo(xbox, v_dma_get_addr, v_dma_put_addr_real)
-        unprocessed_bytes = 0
+        bytes_queued = 0
+        dumpPBState(xbox)
+        X = 4
+        print(["PRE "] + ["%08X" % x for x in struct.unpack("<" + "L" * X, xbox.read(0x80000000 | (v_dma_get_addr - X * 4), X * 4))])
+        print(["POST"] + ["%08X" % x for x in struct.unpack("<" + "L" * X, xbox.read(0x80000000 | (v_dma_get_addr        ), X * 4))])
 
       # Verify we are where we think we are
-      if unprocessed_bytes == 0:
+      if bytes_queued == 0:
         v_dma_get_addr_real = xbox.read_u32(dma_get_addr)
         print("Verifying hw (0x%08X) is at parser (0x%08X)" % (v_dma_get_addr_real, v_dma_get_addr))
-        assert(v_dma_get_addr == v_dma_get_addr_real)
+        try:
+          assert(v_dma_get_addr_real == v_dma_get_addr)
+        except:
+          dumpPBState(xbox)
+          raise
 
     except:
       traceback.print_exc()
       abortNow = True
+
 
   # Recover the real address
   xbox.write_u32(dma_put_addr, v_dma_put_addr_real)

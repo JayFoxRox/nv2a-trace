@@ -1,5 +1,6 @@
 import os
 import struct
+import time
 
 import Texture
 
@@ -363,50 +364,6 @@ def recordPGRAPHMethod(xbox, method_info, data, pre_info, post_info):
   addHTML(["", "0x%08X" % method_info['address'], "0x%04X" % method_info['method'], "0x%08X / %f" % (data, dataf)] + pre_info + post_info)
 
 
-def parseCommand(addr, word, display=False):
-
-  s = "0x%08X: Opcode: 0x%08X" % (addr, word)
-
-  if ((word & 0xe0000003) == 0x20000000):
-    #state->get_jmp_shadow = control->dma_get;
-    #NV2A_DPRINTF("pb OLD_JMP 0x%" HWADDR_PRIx "\n", control->dma_get);
-    addr = word & 0x1ffffffc
-    print(s + "; old jump 0x%08X" % addr)
-  elif ((word & 3) == 1):
-    addr = word & 0xfffffffc
-    print(s + "; jump 0x%08X" % addr)
-    #state->get_jmp_shadow = control->dma_get;
-  elif ((word & 3) == 2):
-    print(s + "; unhandled opcode type: call")
-    #if (state->subroutine_active) {
-    #  state->error = NV_PFIFO_CACHE1_DMA_STATE_ERROR_CALL;
-    #  break;
-    #}
-    #state->subroutine_return = control->dma_get;
-    #state->subroutine_active = true;
-    #control->dma_get = word & 0xfffffffc;
-    addr = 0
-  elif (word == 0x00020000):
-    # return
-    print(s + "; unhandled opcode type: return")
-    addr = 0
-  elif ((word & 0xe0030003) == 0) or ((word & 0xe0030003) == 0x40000000):
-    # methods
-    method = word & 0x1fff;
-    subchannel = (word >> 13) & 7;
-    method_count = (word >> 18) & 0x7ff;
-    method_nonincreasing = word & 0x40000000;
-    #state->dcount = 0;
-
-    if display:
-      print(s + "; Method: 0x%04X (%d times)" % (method, method_count))
-    addr += 4 + method_count * 4
-
-  else:
-    print(s + "; unknown opcode type")
-
-
-  return addr
 
 
 
@@ -420,13 +377,6 @@ def parseCommand(addr, word, display=False):
 
 def run_fifo(xbox, put_addr, v_dma_put_addr_real):
   global DebugPrint
-
-
-  v_dma_put_addr_target = put_addr
-
-  # Queue the commands
-  xbox.write_u32(dma_put_addr, v_dma_put_addr_target)
-
 
 
   def JumpCheck(v_dma_put_addr_real):
@@ -452,6 +402,14 @@ def run_fifo(xbox, put_addr, v_dma_put_addr_real):
     return v_dma_put_addr_real
 
 
+  v_dma_put_addr_target = put_addr
+
+
+  # Queue the commands
+  v_dma_put_addr_prev = xbox.read_u32(dma_put_addr)
+  addHTML(["CRITICAL", "Overwriting 0x%08X with new PUT: 0x%08X" % (v_dma_put_addr_prev, v_dma_put_addr_target)])
+  xbox.write_u32(dma_put_addr, v_dma_put_addr_target)
+
 
   #FIXME: we can avoid this read in some cases, as we should know where we are
   v_dma_get_addr = xbox.read_u32(dma_get_addr)
@@ -466,7 +424,6 @@ def run_fifo(xbox, put_addr, v_dma_put_addr_real):
   #       never leave the known PB.
   while v_dma_get_addr != v_dma_put_addr_target:
     if DebugPrint: print("At 0x%08X, target is 0x%08X (Real: 0x%08X)" % (v_dma_get_addr, v_dma_put_addr_target, v_dma_put_addr_real))
-    if DebugPrint: printDMAstate()
 
     # Disable PGRAPH, so it can't run anything from CACHE.
     disable_pgraph_fifo(xbox)
@@ -493,9 +450,6 @@ def run_fifo(xbox, put_addr, v_dma_put_addr_real):
 
   # It's possible that the CPU updated the PUT after execution
   v_dma_put_addr_real = JumpCheck(v_dma_put_addr_real)
-
-  # Also show that we processed the commands.
-  if DebugPrint: dumpPBState()
 
 
   return v_dma_put_addr_real
@@ -591,11 +545,12 @@ def recordPushBufferCommand(xbox, address, method_info, pre_info, post_info):
 def processPushBufferCommands(xbox, get_addr, put_addr):
   parser_addr = get_addr
 
-  sched_post_callbacks = []
-
   addHTML(["WARNING", "Starting FIFO trace from 0x%08X -- 0x%08X" % (get_addr, put_addr)])
 
-  if parser_addr != put_addr:
+
+  if parser_addr == put_addr:
+    unprocessed_bytes = 0
+  else:
 
     # Filter commands and check where it wants to go to
     method_info, post_addr = parsePushBufferCommand(xbox, parser_addr)
@@ -655,7 +610,7 @@ def processPushBufferCommands(xbox, get_addr, put_addr):
     # Move parser to the next instruction
     parser_addr = post_addr
 
-  addHTML(["WARNING", "Sucessfully finished FIFO trace 0x%08X -- 0x%08X" % (parser_addr, put_addr)])
+  addHTML(["WARNING", "Sucessfully finished FIFO trace 0x%08X -- 0x%08X (%d bytes unprocessed)" % (parser_addr, put_addr, unprocessed_bytes)])
 
   return parser_addr, put_addr, unprocessed_bytes
 

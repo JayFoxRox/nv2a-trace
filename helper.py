@@ -69,6 +69,59 @@ def resume_fifo_pusher(xbox):
   xbox.write_u32(put_state, (s2 & 0xFFFFFFFE) | 1) # Recover pusher state
   if delay(): pass
 
+
+
+
+
+
+
+
+
+def parseCommand(addr, word, display=False):
+
+  s = "0x%08X: Opcode: 0x%08X" % (addr, word)
+
+  if ((word & 0xe0000003) == 0x20000000):
+    #state->get_jmp_shadow = control->dma_get;
+    #NV2A_DPRINTF("pb OLD_JMP 0x%" HWADDR_PRIx "\n", control->dma_get);
+    addr = word & 0x1ffffffc
+    print(s + "; old jump 0x%08X" % addr)
+  elif ((word & 3) == 1):
+    addr = word & 0xfffffffc
+    print(s + "; jump 0x%08X" % addr)
+    #state->get_jmp_shadow = control->dma_get;
+  elif ((word & 3) == 2):
+    print(s + "; unhandled opcode type: call")
+    #if (state->subroutine_active) {
+    #  state->error = NV_PFIFO_CACHE1_DMA_STATE_ERROR_CALL;
+    #  break;
+    #}
+    #state->subroutine_return = control->dma_get;
+    #state->subroutine_active = true;
+    #control->dma_get = word & 0xfffffffc;
+    addr = 0
+  elif (word == 0x00020000):
+    # return
+    print(s + "; unhandled opcode type: return")
+    addr = 0
+  elif ((word & 0xe0030003) == 0) or ((word & 0xe0030003) == 0x40000000):
+    # methods
+    method = word & 0x1fff;
+    subchannel = (word >> 13) & 7;
+    method_count = (word >> 18) & 0x7ff;
+    method_nonincreasing = word & 0x40000000;
+    #state->dcount = 0;
+
+    if display:
+      print(s + "; Method: 0x%04X (%d times)" % (method, method_count))
+    addr += 4 + method_count * 4
+
+  else:
+    print(s + "; unknown opcode type")
+
+
+  return addr
+
 def dumpPB(start, end):
   offset = start
   while(offset != end):
@@ -77,12 +130,14 @@ def dumpPB(start, end):
       break
 
 #FIXME: This works poorly if the method count is not 0
-def dumpPBState():
-  v_dma_get_addr = read_u32(dma_get_addr)
-  v_dma_put_addr = read_u32(dma_put_addr)
-  v_dma_subroutine = read_u32(dma_subroutine)
+def dumpPBState(xbox):
+  v_dma_get_addr = xbox.read_u32(dma_get_addr)
+  v_dma_put_addr = xbox.read_u32(dma_put_addr)
+  v_dma_subroutine = xbox.read_u32(dma_subroutine)
 
-  print("PB-State: 0x%08X / 0x%08X / 0x%08X" % (v_dma_get_addr, v_dma_put_addr, v_dma_subroutine))
+  s1 = xbox.read_u32(put_state)
+
+  print("PB-State: 0x%08X / 0x%08X / 0x%08X [PUT state: 0x%08X]" % (v_dma_get_addr, v_dma_put_addr, v_dma_subroutine, s1))
   dumpPB(v_dma_get_addr, v_dma_put_addr)
   print()
 
