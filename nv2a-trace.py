@@ -125,14 +125,14 @@ def main():
 
       # Avoid queuing up too many bytes
       if unprocessed_bytes >= 1000:
-        print("Flushing buffer")
+        print("Flushing buffer until (0x%08X)" % v_dma_get_addr)
         v_dma_put_addr_real = Trace.run_fifo(xbox, v_dma_get_addr, v_dma_put_addr_real)
         unprocessed_bytes = 0
 
       # Verify we are where we think we are
       if unprocessed_bytes == 0:
-        print("Verifying buffer")
         v_dma_get_addr_real = xbox.read_u32(dma_get_addr)
+        print("Verifying hw (0x%08X) is at parser (0x%08X)" % (v_dma_get_addr_real, v_dma_get_addr))
         assert(v_dma_get_addr == v_dma_get_addr_real)
 
     except:

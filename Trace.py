@@ -5,7 +5,7 @@ import Texture
 
 from helper import *
 
-PixelDumping = False
+PixelDumping = True
 DebugPrint = False
 
 commandCount = 0
@@ -73,6 +73,8 @@ def DumpTextures(xbox, data, *args):
   if not PixelDumping:
     return []
     
+  return [] #FIXME: Remove, dirty hack to speedup debugging
+
   extraHTML = []
 
   for i in range(4):
@@ -109,6 +111,13 @@ def DumpSurfaces(xbox, data, *args):
   #FIXME: if surface_type is 0, we probably can't even draw..
 
   color_fmt = (draw_format >> 12) & 0xF
+
+   #FIXME: Remove, dirty hack to speedup debugging
+  if color_fmt != 5:
+    return []
+  else:
+    swizzled = False
+
   if color_fmt == 0x3: # ARGB1555
     fmt_color = 0x3 if swizzled else 0x1C
   elif color_fmt == 0x5: # RGB565
@@ -352,19 +361,19 @@ def recordPGRAPHMethod(xbox, method_info, data, pre_info, post_info):
 
 def parseCommand(addr, word, display=False):
 
-  s = "Opcode: 0x%08X" % (word)
+  s = "0x%08X: Opcode: 0x%08X" % (addr, word)
 
   if ((word & 0xe0000003) == 0x20000000):
-    print("old jump")
     #state->get_jmp_shadow = control->dma_get;
     #NV2A_DPRINTF("pb OLD_JMP 0x%" HWADDR_PRIx "\n", control->dma_get);
-    addr = word & 0x1fffffff
+    addr = word & 0x1ffffffc
+    print(s + "; old jump 0x%08X" % addr)
   elif ((word & 3) == 1):
     addr = word & 0xfffffffc
-    print("jump 0x%08X" % addr)
+    print(s + "; jump 0x%08X" % addr)
     #state->get_jmp_shadow = control->dma_get;
   elif ((word & 3) == 2):
-    print("unhandled opcode type: call")
+    print(s + "; unhandled opcode type: call")
     #if (state->subroutine_active) {
     #  state->error = NV_PFIFO_CACHE1_DMA_STATE_ERROR_CALL;
     #  break;
@@ -375,7 +384,7 @@ def parseCommand(addr, word, display=False):
     addr = 0
   elif (word == 0x00020000):
     # return
-    print("unhandled opcode type: return")
+    print(s + "; unhandled opcode type: return")
     addr = 0
   elif ((word & 0xe0030003) == 0) or ((word & 0xe0030003) == 0x40000000):
     # methods
@@ -385,14 +394,13 @@ def parseCommand(addr, word, display=False):
     method_nonincreasing = word & 0x40000000;
     #state->dcount = 0;
 
-    s += "; Method: 0x%04X (%d times)" % (method, method_count)
+    if display:
+      print(s + "; Method: 0x%04X (%d times)" % (method, method_count))
     addr += 4 + method_count * 4
 
   else:
-    print("unknown opcode type")
+    print(s + "; unknown opcode type")
 
-  if display:
-    print(s)
 
   return addr
 
@@ -476,8 +484,6 @@ def run_fifo(xbox, put_addr, v_dma_put_addr_real):
 
     # Get the updated PB address.
     v_dma_get_addr = xbox.read_u32(dma_get_addr)
-
-
 
 
 

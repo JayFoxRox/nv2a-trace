@@ -64,6 +64,8 @@ def dumpTexture(xbox, offset, pitch, fmt_color, width, height):
   A8R8G8B8 = (32, (8,8,8,8), (16, 8, 0, 24))
   X8R8G8B8 = (32, (8,8,8), (16, 8, 0))
 
+  tex_info = None
+
   if fmt_color == 0x2: tex_info = (True, A1R5G5B5)
   elif fmt_color == 0x3: tex_info = (True, X1R5G5B5)
   elif fmt_color == 0x4: tex_info = (True, A4R4G4B4)
@@ -73,13 +75,13 @@ def dumpTexture(xbox, offset, pitch, fmt_color, width, height):
   elif fmt_color == 0xB: pass #FIXME! Palette mode!
   elif fmt_color == 0xC: # DXT1
     data = xbox.read(0x80000000 | offset, width * height // 2)
-    img = Image.frombytes('RGB', img.size, data, 'bcn', 1) # DXT1
+    img = Image.frombytes('RGBA', (width, height), data, 'bcn', 1) # DXT1
   elif fmt_color == 0xE: # DXT3
     data = xbox.read(0x80000000 | offset, width * height * 1)
-    img = Image.frombytes('RGBA', img.size, data, 'bcn', 2) # DXT3
+    img = Image.frombytes('RGBA', (width, height), data, 'bcn', 2) # DXT3
   elif fmt_color == 0xF: # DXT5
     data = xbox.read(0x80000000 | offset, width * height * 1)
-    img = Image.frombytes('RGBA', img.size, data, 'bcn', 3) # DXT5
+    img = Image.frombytes('RGBA', (width, height), data, 'bcn', 3) # DXT5
   elif fmt_color == 0x10: tex_info = (False, A1R5G5B5A5)
   elif fmt_color == 0x11: tex_info = (False, R5G6B5)
   elif fmt_color == 0x12: tex_info = (False, A8R8G8B8)
@@ -91,6 +93,10 @@ def dumpTexture(xbox, offset, pitch, fmt_color, width, height):
   elif fmt_color == 0x31: pass #FIXME! Depth format
   else:
     raise Exception("Unknown texture format: 0x%X" % fmt_color)
+
+
+  if img == None and tex_info == None:
+    img = Image.new('RGB', (1, 1), (255, 0, 255, 255))
 
   # Some formats might have been parsed already    
   if img == None:
