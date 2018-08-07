@@ -1,4 +1,4 @@
-#!/usr/bin/env python3 -u
+#!/usr/bin/python3 -u
 
 from xboxpy import *
 
@@ -110,12 +110,8 @@ def main():
 
   bytes_queued = 0
 
-  # Step through the PB until we finish.
+  # Step through the PB until we abort
   while not abortNow:
-
-    # Check if the user wants to exit first
-    if abortNow:
-      break
 
     # Loop until we hit an instruction we have to filter
     try:
