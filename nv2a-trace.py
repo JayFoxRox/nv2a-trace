@@ -62,12 +62,12 @@ def main():
     resume_fifo_pusher(xbox)
     pause_fifo_pusher(xbox)
 
-    # Now drain the CACHE
+    # Now drain the CACHE.
     enable_pgraph_fifo(xbox)
 
     # Check out where the PB currently is and where it was supposed to go.
-    v_dma_put_addr_real = xbox.read_u32(dma_put_addr)
-    v_dma_get_addr = xbox.read_u32(dma_get_addr)
+    v_dma_put_addr_real = xbox.read_u32(DMA_PUT_ADDR)
+    v_dma_get_addr = xbox.read_u32(DMA_GET_ADDR)
 
     # Check if we have any methods left to run and skip those.
     v_dma_state = xbox.read_u32(dma_state)
@@ -76,7 +76,7 @@ def main():
 
     # Hide all commands from the PB by setting PUT = GET.
     v_dma_put_addr_target = v_dma_get_addr
-    xbox.write_u32(dma_put_addr, v_dma_put_addr_target)
+    xbox.write_u32(DMA_PUT_ADDR, v_dma_put_addr_target)
 
     # Resume pusher - The PB can't run yet, as it has no commands to process.
     resume_fifo_pusher(xbox)
@@ -88,8 +88,8 @@ def main():
     # So we pause the pusher again to validate our state
     pause_fifo_pusher(xbox)
 
-    v_dma_put_addr_target_check = xbox.read_u32(dma_put_addr)
-    v_dma_get_addr_check = xbox.read_u32(dma_get_addr)
+    v_dma_put_addr_target_check = xbox.read_u32(DMA_PUT_ADDR)
+    v_dma_get_addr_check = xbox.read_u32(DMA_GET_ADDR)
 
     # We want the PB to be paused
     if v_dma_get_addr_check != v_dma_put_addr_target_check:
@@ -110,32 +110,35 @@ def main():
 
   bytes_queued = 0
 
+  # Create a new trace object
+  trace = Trace.Tracer(v_dma_get_addr, v_dma_put_addr_real)
+
   # Step through the PB until we abort
   while not abortNow:
 
     try:
 
-      v_dma_get_addr, v_dma_put_addr_real, unprocessed_bytes = Trace.processPushBufferCommands(xbox, v_dma_get_addr, v_dma_put_addr_real)
+      v_dma_get_addr, v_dma_put_addr_real, unprocessed_bytes = trace.processPushBufferCommands(xbox, v_dma_get_addr, v_dma_put_addr_real)
       bytes_queued += unprocessed_bytes
-
-      if v_dma_get_addr == v_dma_put_addr_real:
-        break
 
       #time.sleep(0.5)
 
       # Avoid queuing up too many bytes
       if v_dma_get_addr == v_dma_put_addr_real or bytes_queued >= 200:
         print("Flushing buffer until (0x%08X)" % v_dma_get_addr)
-        v_dma_put_addr_real = Trace.run_fifo(xbox, v_dma_get_addr, v_dma_put_addr_real)
+        v_dma_put_addr_real = trace.run_fifo(xbox, v_dma_get_addr)
         bytes_queued = 0
         dumpPBState(xbox)
         X = 4
         print(["PRE "] + ["%08X" % x for x in struct.unpack("<" + "L" * X, xbox.read(0x80000000 | (v_dma_get_addr - X * 4), X * 4))])
         print(["POST"] + ["%08X" % x for x in struct.unpack("<" + "L" * X, xbox.read(0x80000000 | (v_dma_get_addr        ), X * 4))])
 
+      if v_dma_get_addr == v_dma_put_addr_real:
+        break
+
       # Verify we are where we think we are
       if bytes_queued == 0:
-        v_dma_get_addr_real = xbox.read_u32(dma_get_addr)
+        v_dma_get_addr_real = xbox.read_u32(DMA_GET_ADDR)
         print("Verifying hw (0x%08X) is at parser (0x%08X)" % (v_dma_get_addr_real, v_dma_get_addr))
         try:
           assert(v_dma_get_addr_real == v_dma_get_addr)
@@ -149,7 +152,7 @@ def main():
 
 
   # Recover the real address
-  xbox.write_u32(dma_put_addr, v_dma_put_addr_real)
+  xbox.write_u32(DMA_PUT_ADDR, v_dma_put_addr_real)
 
   print("\n\nFinished PB\n\n")
 
@@ -160,8 +163,8 @@ def main():
   end_time = time.monotonic()
   duration = end_time - begin_time
 
-  flipStallCount = Trace.recordedFlipStallCount()
-  commandCount = Trace.recordedPushBufferCommandCount()
+  flipStallCount = trace.recordedFlipStallCount()
+  commandCount = trace.recordedPushBufferCommandCount()
   
   print("Recorded %d flip stalls and %d PB commands (%.2f commands / second)" % (flipStallCount, commandCount, commandCount / duration))
 

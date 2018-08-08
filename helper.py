@@ -1,13 +1,13 @@
 
 dma_state = 0xFD003228
-dma_put_addr = 0xFD003240
-dma_get_addr = 0xFD003244
+DMA_PUT_ADDR = 0xFD003240
+DMA_GET_ADDR = 0xFD003244
 dma_subroutine = 0xFD00324C
 
-put_addr = 0xFD003210
-put_state = 0xFD003220
-get_addr = 0xFD003270
-get_state = 0xFD003250
+PUT_ADDR = 0xFD003210
+PUT_STATE = 0xFD003220
+GET_ADDR = 0xFD003270
+GET_STATE = 0xFD003250
 
 pgraph_state = 0xFD400720
 pgraph_status = 0xFD400700
@@ -34,19 +34,19 @@ def enable_pgraph_fifo(xbox):
   if delay(): pass
 
 def wait_until_pusher_idle(xbox):
-  while(xbox.read_u32(get_state) & (1 << 4)):
+  while(xbox.read_u32(GET_STATE) & (1 << 4)):
     pass
 
 def pause_fifo_puller(xbox):
   # Idle the puller and pusher
-  s1 = xbox.read_u32(get_state)
-  xbox.write_u32(get_state, s1 & 0xFFFFFFFE)
+  s1 = xbox.read_u32(GET_STATE)
+  xbox.write_u32(GET_STATE, s1 & 0xFFFFFFFE)
   if delay(): pass
   #print("Puller State was 0x" + format(s1, '08X'))
 
 def pause_fifo_pusher(xbox):
-  s1 = xbox.read_u32(put_state)
-  xbox.write_u32(put_state, s1 & 0xFFFFFFFE)
+  s1 = xbox.read_u32(PUT_STATE)
+  xbox.write_u32(PUT_STATE, s1 & 0xFFFFFFFE)
   if delay(): pass
   if False:
     s1 = xbox.read_u32(0xFD003200)
@@ -56,8 +56,8 @@ def pause_fifo_pusher(xbox):
 
 def resume_fifo_puller(xbox):
   # Resume puller and pusher
-  s2 = xbox.read_u32(get_state)
-  xbox.write_u32(get_state, (s2 & 0xFFFFFFFE) | 1) # Recover puller state
+  s2 = xbox.read_u32(GET_STATE)
+  xbox.write_u32(GET_STATE, (s2 & 0xFFFFFFFE) | 1) # Recover puller state
   if delay(): pass
 
 def resume_fifo_pusher(xbox):
@@ -65,8 +65,8 @@ def resume_fifo_pusher(xbox):
     s2 = xbox.read_u32(0xFD003200)
     xbox.write_u32(0xFD003200, s2 & 0xFFFFFFFE | 1)
     if delay(): pass
-  s2 = xbox.read_u32(put_state)
-  xbox.write_u32(put_state, (s2 & 0xFFFFFFFE) | 1) # Recover pusher state
+  s2 = xbox.read_u32(PUT_STATE)
+  xbox.write_u32(PUT_STATE, (s2 & 0xFFFFFFFE) | 1) # Recover pusher state
   if delay(): pass
 
 
@@ -131,22 +131,22 @@ def dumpPB(start, end):
 
 #FIXME: This works poorly if the method count is not 0
 def dumpPBState(xbox):
-  v_dma_get_addr = xbox.read_u32(dma_get_addr)
-  v_dma_put_addr = xbox.read_u32(dma_put_addr)
+  v_dma_get_addr = xbox.read_u32(DMA_GET_ADDR)
+  v_dma_put_addr = xbox.read_u32(DMA_PUT_ADDR)
   v_dma_subroutine = xbox.read_u32(dma_subroutine)
 
-  s1 = xbox.read_u32(put_state)
+  s1 = xbox.read_u32(PUT_STATE)
 
   print("PB-State: 0x%08X / 0x%08X / 0x%08X [PUT state: 0x%08X]" % (v_dma_get_addr, v_dma_put_addr, v_dma_subroutine, s1))
   dumpPB(v_dma_get_addr, v_dma_put_addr)
   print()
 
 def dumpCacheState():
-  v_get_addr = read_u32(get_addr)
-  v_put_addr = read_u32(put_addr)
+  v_get_addr = read_u32(GET_ADDR)
+  v_put_addr = read_u32(PUT_ADDR)
 
-  v_get_state = read_u32(get_state)
-  v_put_state = read_u32(put_state)
+  v_get_state = read_u32(GET_STATE)
+  v_put_state = read_u32(PUT_STATE)
 
   print("CACHE-State: 0x%X / 0x%X" % (v_get_addr, v_put_addr))
 
