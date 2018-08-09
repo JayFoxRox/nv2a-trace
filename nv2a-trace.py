@@ -44,12 +44,13 @@ class Xbox:
     self.write_u32 = write_u32
     self.read = read
     self.write = write
+    self.call = api.call
+    self.ke = ke
 xbox = Xbox()
 
 def main():
 
   global abortNow
-
 
   print("\n\nSearching stable PB state\n\n")
   
@@ -88,6 +89,8 @@ def main():
     # So we pause the pusher again to validate our state
     pause_fifo_pusher(xbox)
 
+    time.sleep(1.0)
+
     v_dma_put_addr_target_check = xbox.read_u32(DMA_PUT_ADDR)
     v_dma_get_addr_check = xbox.read_u32(DMA_GET_ADDR)
 
@@ -118,22 +121,22 @@ def main():
 
     try:
 
-      v_dma_get_addr, v_dma_put_addr_real, unprocessed_bytes = trace.processPushBufferCommands(xbox, v_dma_get_addr, v_dma_put_addr_real)
+      v_dma_get_addr, unprocessed_bytes = trace.processPushBufferCommand(xbox, v_dma_get_addr)
       bytes_queued += unprocessed_bytes
 
       #time.sleep(0.5)
 
       # Avoid queuing up too many bytes
-      if v_dma_get_addr == v_dma_put_addr_real or bytes_queued >= 200:
+      if v_dma_get_addr == trace.real_dma_put_addr or bytes_queued >= 200:
         print("Flushing buffer until (0x%08X)" % v_dma_get_addr)
-        v_dma_put_addr_real = trace.run_fifo(xbox, v_dma_get_addr)
+        trace.run_fifo(xbox, v_dma_get_addr)
         bytes_queued = 0
         dumpPBState(xbox)
         X = 4
         print(["PRE "] + ["%08X" % x for x in struct.unpack("<" + "L" * X, xbox.read(0x80000000 | (v_dma_get_addr - X * 4), X * 4))])
         print(["POST"] + ["%08X" % x for x in struct.unpack("<" + "L" * X, xbox.read(0x80000000 | (v_dma_get_addr        ), X * 4))])
 
-      if v_dma_get_addr == v_dma_put_addr_real:
+      if v_dma_get_addr == trace.real_dma_put_addr:
         break
 
       # Verify we are where we think we are
@@ -152,7 +155,7 @@ def main():
 
 
   # Recover the real address
-  xbox.write_u32(DMA_PUT_ADDR, v_dma_put_addr_real)
+  xbox.write_u32(DMA_PUT_ADDR, trace.real_dma_put_addr)
 
   print("\n\nFinished PB\n\n")
 
