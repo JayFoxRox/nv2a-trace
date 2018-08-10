@@ -202,6 +202,18 @@ class Tracer():
 
 
 
+    # We always dump twice from what we expect
+    if True:
+      def out(suffix, contents):
+        with open(("out/command%d_" % self.commandCount)+ suffix, "wb") as f:
+          f.write(contents)
+      buffer_size = pitch * height * 2
+      out("mem.bin", xbox.read(0x80000000 | offset, buffer_size))
+      out("pgraph.bin", dumpPGRAPH(xbox))
+
+    
+
+
     #FIXME: Respect anti-aliasing
 
     path = "command%d--color.png" % (self.commandCount)
