@@ -1,5 +1,4 @@
 # Based on https://github.com/envytools/envytools/blob/master/nvhw/tile.c
-#FIXME: Add https://github.com/envytools/envytools/blob/master/hwtest/nv10_tile.cc#L35
 
 def is_igp(chipset):
   #  switch (chipset) {
@@ -19,10 +18,24 @@ def is_igp(chipset):
   #    default:
   #      return 0;
   #  }
-  return True
+
+  # Hack, based on the following IRC discussion:
+  #  mwk: JayFoxRox: don't treat the NV2A as an IGP
+  #  mwk: it might be an IGP by definition, but the xbox.... is very strange
+  #  mwk: in normal IGP setup, the GPU borrows memory from the main mem controller, but in xbox, it's the other way around -- all the memory in the xbox is VRAM, and the CPU borrows it
+  #  mwk: so the memory controller is pretty much identical to a normal discrete GPU
+  #  JayFoxRox: mwk: NV2A is chipset 0x2A, correct? so should I make is_igp return False in my use-case?
+  #  mwk: is_igp... I guess it'd be OK to make is_igp false
+  #  mwk: though it might be better to tie that to PFB type instead
+
+  return False
 
 def has_tile_factor_13(chipset):
   # return pfb_type(chipset) >= PFB_NV20 && chipset != 0x20
+
+  # Not sure if NV2A / 0x2A actually qualifies, because it's before 0x25
+  assert(False)
+
   return True
 
 def has_large_tile(chipset):
@@ -77,11 +90,19 @@ def tile_pitch_valid(chipset, pitch):
   return True, shift, factor
 
 class mc_config:
-  def __init__(self):
+  def __init__(self, cfg0, cfg1):
     self.mcbits = 0
     self.partbits = 0
     self.colbits_lo = 0
     self.burstbits = 0
+
+    if True:
+      #FIXME: Add https://github.com/envytools/envytools/blob/master/hwtest/nv10_tile.cc#L35
+      self.mcbits = 2
+      self.partbits = 2
+      self.colbits_lo = 2
+      self.burstbits = 0
+
 
 def tile_translate_addr(chipset, pitch, address, mode, bankoff, mcc):
   bankshift = mcc.mcbits + mcc.partbits + mcc.colbits_lo

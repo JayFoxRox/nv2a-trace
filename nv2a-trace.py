@@ -52,6 +52,12 @@ def main():
 
   global abortNow
 
+  #FIXME: Remove! hack to see if this works
+  print("Pre-dump")
+  dumpPFB(xbox)
+  print("Post-dump")
+  return
+
   print("\n\nSearching stable PB state\n\n")
   
   while True:

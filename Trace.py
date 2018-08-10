@@ -78,6 +78,14 @@ def dumpPGRAPH(xbox):
   assert(len(buffer) == 0x2000)
   return bytes(buffer)
 
+def dumpPFB(xbox):
+  buffer = bytearray([])
+  buffer.extend(xbox.read(0xFD100000, 0x1000))
+
+  # Return the PFB dump
+  assert(len(buffer) == 0x1000)
+  return bytes(buffer)
+
 
 
 
@@ -210,6 +218,7 @@ class Tracer():
       buffer_size = pitch * height * 2
       out("mem.bin", xbox.read(0x80000000 | offset, buffer_size))
       out("pgraph.bin", dumpPGRAPH(xbox))
+      out("pfb.bin", dumpPFB(xbox))
 
     
 
