@@ -5,7 +5,7 @@ from xboxpy import nv2a
 import struct
 from PIL import Image
 
-def decodeTexture(data, size, pitch, swizzled, bits_per_pixel, channel_sizes, channel_offsets):
+def decodeTexture(data, size, pitch, swizzled, bits_per_pixel, channel_sizes, channel_offsets, disable_hack=False):
 
   # Check argument sanity
   assert(len(size) == 2) #FIXME: Support 1D and 3D?
@@ -28,7 +28,7 @@ def decodeTexture(data, size, pitch, swizzled, bits_per_pixel, channel_sizes, ch
 
   #FIXME: Unswizzle data on the fly instead
   if swizzled:
-    if width == 640 and height <= 480 and pitch == 2560:
+    if not disable_hack and width == 640 and height <= 480 and pitch == 2560:
       data = nv2a.Unswizzle(data, bits_per_pixel, (width, height), pitch)
     else:
       data = nv2a._Unswizzle(data, bits_per_pixel, (width, height), pitch)
