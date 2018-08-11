@@ -163,10 +163,12 @@ class Tracer():
     #FIXME: Poor var names
 
     surface_color_offset = xbox.read_u32(0xFD400828)
+    surface_depth_offset = xbox.read_u32(0xFD40082C)
     surface_clip_x = xbox.read_u32(0xFD4019B4)
     surface_clip_y = xbox.read_u32(0xFD4019B8)
 
-    offset = surface_color_offset
+    offset2 = surface_color_offset
+    offset3 = surface_depth_offset
 
     draw_format = xbox.read_u32(0xFD400804)
     surface_type = xbox.read_u32(0xFD400710)
@@ -174,8 +176,14 @@ class Tracer():
 
     swizzle_unk2 = xbox.read_u32(0xFD40086c)
 
-    width = (surface_clip_x >> 16) & 0xFFFF
-    height = (surface_clip_y >> 16) & 0xFFFF
+    clip_x = (surface_clip_x >> 0) & 0xFFFF
+    clip_y = (surface_clip_y >> 0) & 0xFFFF
+
+    clip_w = (surface_clip_x >> 16) & 0xFFFF
+    clip_h = (surface_clip_y >> 16) & 0xFFFF
+
+    width = clip_x + clip_w
+    height = clip_y + clip_h
 
 
     #FIXME: 128 x 128 [pitch = 256 (0x100)], at 0x01AA8000 [PGRAPH: 0x01AA8000?], format 0x5, type: 0x21000002, swizzle: 0x7070000 [used 0]
@@ -216,9 +224,14 @@ class Tracer():
         with open(("out/command%d_" % self.commandCount)+ suffix, "wb") as f:
           f.write(contents)
       buffer_size = pitch * height * 2
-      out("mem.bin", xbox.read(0x80000000 | offset, buffer_size))
       out("pgraph.bin", dumpPGRAPH(xbox))
       out("pfb.bin", dumpPFB(xbox))
+      if offset2 != 0x00000000:
+        out("mem-2.bin", xbox.read(0x80000000 | offset2, buffer_size))
+      if offset3 != 0x00000000:
+        out("mem-3.bin", xbox.read(0x80000000 | offset3, buffer_size))
+
+    offset = offset2
 
     
 
