@@ -183,3 +183,15 @@ def printDMAstate():
   
   print("v_dma_method: 0x%04X (count: %d)" % (v_dma_method, v_dma_method_count))
 
+
+def apply_anti_aliasing_factor(surface_anti_aliasing, x, y):
+  if surface_anti_aliasing == 0:
+    return x, y
+  elif surface_anti_aliasing == 1:
+    return x*2, y
+  elif surface_anti_aliasing == 2:
+    return x*2, y*2
+  else:
+    assert(False)
+    return None
+
