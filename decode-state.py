@@ -33,6 +33,12 @@ cfg0 = read_word(pfb, 0x200)
 cfg1 = read_word(pfb, 0x204)
 mcc = nv_tiles.mc_config(cfg0, cfg1)
 
+print("\nSubchannels:")
+for i in range(8):
+  grclass = read_word(pgraph,0x160 + i * 4) & 0xFF
+  print("[%d] Graphics class: 0x%02X" % (i, grclass))
+print("")
+
 print("\nTiles:")
 for i in range(8):
 
