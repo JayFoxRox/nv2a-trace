@@ -17,12 +17,10 @@ def read_word(storage, offset):
 
 path = sys.argv[1]
 
-mem = load_out(path, "mem.bin")
+mem_color = load_out(path, "mem-2.bin")
+mem_depth = load_out(path, "mem-3.bin")
 pgraph = load_out(path, "pgraph.bin")
-try:
-  pfb = load_out(path, "pfb.bin")
-except:
-  pfb = bytes([0] * 0x1000)
+pfb = load_out(path, "pfb.bin")
 
 
 def align_up(v, alignment):
@@ -36,6 +34,7 @@ mcc = nv_tiles.mc_config(cfg0, cfg1)
 print("\nTiles:")
 for i in range(8):
 
+  # Also in PGRAPH 0x900?!
   tile = read_word(pfb, 0x240 + 16 * i)
   valid = tile & 1
   bank_sense = tile & 2
@@ -43,7 +42,7 @@ for i in range(8):
 
   tlimit = read_word(pfb, 0x244 + 16 * i)
   #FIXME: This is apparently 18+14 bits, much like address, but lower bits always set?
-  #FIXME: assert((tlimit & 0x3FFF) == 0x3FFF)
+  assert((tlimit & 0x3FFF) == 0x3FFF)
 
   tsize = read_word(pfb, 0x248 + 16 * i)
   pitch = tsize & 0xFFFF
@@ -56,7 +55,18 @@ for i in range(8):
 
   valid_str = "valid" if valid else "invalid"
   region_valid_str = "valid" if region_valid else "invalid"
+
   print("[%d] %s; bank sense %d; address 0x%08X, limit 0x%08X, pitch 0x%X, prime %d, factor %d, region %s" % (i, valid_str, bank_sense, address, tlimit, pitch, prime, factor, region_valid_str))
+
+  fb_zcomp = read_word(pfb, 0x300 + 4 * i)
+  zcomp_enabled = fb_zcomp & 0x80000000
+
+  pgraph_zcomp = read_word(pgraph, 0x980 + 4 * i)
+
+  zcomp_enabled_str = "compressed" if zcomp_enabled else "uncompressed"
+  
+  print("     Z-compression: %s 0x%08X, 0x%08X" % (zcomp_enabled_str, fb_zcomp, pgraph_zcomp))
+
 print("")
 
 
@@ -120,8 +130,15 @@ height = clip_y + clip_h
 
 pitch = read_word(pgraph, 0x858)
 
+surface_format = read_word(pgraph, 0x804)
+format_color = (surface_format >> 12) & 0xF
+format_depth = (surface_format >> 18) & 0x3
+depth_float = (read_word(pgraph, 0x1990) >> 29) & 1
+depth_float_str = "float" if depth_float else "fixed"
+
 print("Clip is at %d x %d + %d, %d" % (clip_w, clip_h, clip_x, clip_y))
 print("Assuming surface size is %d x %d (pitch %d)" % (width, height, pitch))
+print("Surface format color: 0x%X depth: 0x%X (%s) %s" % (format_color, format_depth, ('invalid','Z16','Z24S8')[format_depth], depth_float_str))
 
 # Requirement for the tiling stuff?
 #FIXME: Why tho?
@@ -143,24 +160,6 @@ def img_to_words(img):
 
 swizzled_bytes = struct.pack("<" + "L" * len(swizzled), *swizzled)
 
-print("HCK")
-img = Texture.decodeTexture(swizzled_bytes, (640, 480), 2560, True, 32, (8,8,8,8), (0,8,16,24))
-hack = img_to_words(img)
-
-print("GEN")
-generated = []
-for v in range(0, 8):
-
-
-  for u in range(0, 4):
-    for z in range(0, 640 // 64):
-      for y in range(0, 4):
-        for x1 in range(0, 2):
-          for x2 in range(0, 8):
-            in_block = z * 1024 + y * 64 + (x1 * 8 + x2)
-
-            generated += [v * 264 + u * 16 + in_block]
-
 
 def untile(data, lookup, bpp):
   bytes_per_pixel = bpp // 8
@@ -169,6 +168,33 @@ def untile(data, lookup, bpp):
     for j in range(bytes_per_pixel):
       new_data[i * bytes_per_pixel + j] = data[lookup[i] * bytes_per_pixel + j]
   return new_data
+
+
+
+
+if False:
+  print("HCK")
+  img = Texture.decodeTexture(swizzled_bytes, (640, 480), 2560, True, 32, (8,8,8,8), (0,8,16,24))
+  hack = img_to_words(img)
+
+  print("GEN")
+  generated = []
+  for v in range(0, 8):
+
+
+    for u in range(0, 4):
+      for z in range(0, 640 // 64):
+        for y in range(0, 4):
+          for x1 in range(0, 2):
+            for x2 in range(0, 8):
+              in_block = z * 1024 + y * 64 + (x1 * 8 + x2)
+
+              generated += [v * 264 + u * 16 + in_block]
+
+  mem_untiled = untile(mem_color, hack, 32)
+  img = Texture.decodeTexture(mem_untiled, (640, 480), 2560, False, 32, (8,8,8), (16,8,0))
+  img.save("untiled-hack.png")
+
   
 
 
@@ -187,18 +213,24 @@ for i in range(pitch * height // bytes_per_pixel):
   tile_lookup += [nv_tiles.tile_translate_addr(chipset, pitch, i * bytes_per_pixel, mode, bankoff, mcc)[2] // bytes_per_pixel]
 
 
-mem_untiled = untile(mem, hack, 32)
-img = Texture.decodeTexture(mem_untiled, (640, 480), 2560, False, 32, (8,8,8), (16,8,0))
-img.save("untiled-hack.png")
+
 
 assert(height % 16 == 0)
 
-mem_untiled = untile(mem, tile_lookup, bpp)
+mem_untiled = untile(mem_color, tile_lookup, bpp)
 img = Texture.decodeTexture(mem_untiled, (width, height), pitch, False, bpp, (8,8,8), (16,8,0))
-img.save("untiled-tiles.png")
+img.save("untiled-tiles-color.png")
 
 ImageDraw.Draw(img).rectangle([clip_x - 1, clip_y - 1, clip_x + clip_w + 1, clip_y + clip_h + 1], fill=None, outline=(255, 0, 0))
-img.save("untiled-tiles-surface_clip.png")
+img.save("untiled-tiles-color-surface_clip.png")
+
+
+
+mem_untiled = untile(mem_depth, tile_lookup, bpp)
+img = Texture.decodeTexture(mem_untiled, (width, height), pitch, False, bpp, (8,0,0), (8,16,24))
+img.save("untiled-tiles-depth.png")
+
+
 
 if False:
   print("---")

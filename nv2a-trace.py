@@ -52,11 +52,6 @@ def main():
 
   global abortNow
 
-  #FIXME: Remove! hack to see if this works
-  print("Pre-dump")
-  dumpPFB(xbox)
-  print("Post-dump")
-  return
 
   print("\n\nSearching stable PB state\n\n")
   
@@ -118,6 +113,13 @@ def main():
   begin_time = time.monotonic()
 
   bytes_queued = 0
+
+  # Disable Z-buffer compression
+  # FIXME: This is a dirty dirty hack which breaks PFB and PGRAPH state!
+  for i in range(8):
+    zcomp = xbox.read_u32(0xFD100300 + 4 * i)
+    xbox.write_u32(0xFD100300 + 4 * i, zcomp & 0x7FFFFFFF)
+    xbox.write_u32(0xFD400980 + 4 * i, zcomp & 0x7FFFFFFF)
 
   # Create a new trace object
   trace = Trace.Tracer(v_dma_get_addr, v_dma_put_addr_real)
