@@ -158,17 +158,14 @@ class Tracer():
     if not PixelDumping:
       return []
     
-  #  offset = color_offset
-    pitch = xbox.read_u32(0xFD400858) # FIXME: Read from PGRAPH
-    #FIXME: Poor var names
+    color_pitch = xbox.read_u32(0xFD400858)
+    depth_pitch = xbox.read_u32(0xFD40085C)
 
-    surface_color_offset = xbox.read_u32(0xFD400828)
-    surface_depth_offset = xbox.read_u32(0xFD40082C)
+    color_offset = xbox.read_u32(0xFD400828)
+    depth_offset = xbox.read_u32(0xFD40082C)
+
     surface_clip_x = xbox.read_u32(0xFD4019B4)
     surface_clip_y = xbox.read_u32(0xFD4019B8)
-
-    offset2 = surface_color_offset
-    offset3 = surface_depth_offset
 
     draw_format = xbox.read_u32(0xFD400804)
     surface_type = xbox.read_u32(0xFD400710)
@@ -190,21 +187,11 @@ class Tracer():
 
     #FIXME: This does not seem to be a good field for this
     #FIXME: Patched to give 50% of coolness
-    swizzled = True #commandCount & 1 #((surface_type & 3) == 1)
+    swizzled = ((surface_type & 3) == 2)
     #FIXME: if surface_type is 0, we probably can't even draw..
 
 
     color_fmt = (draw_format >> 12) & 0xF
-
-     #FIXME: Remove, dirty hack to speedup debugging
-    if color_fmt != 5:
-      #return []
-      pass
-    else:
-      #swizzled = False
-      pass
-
-
     if color_fmt == 0x3: # ARGB1555
       fmt_color = 0x3 if swizzled else 0x1C
     elif color_fmt == 0x5: # RGB565
@@ -218,20 +205,17 @@ class Tracer():
 
 
 
-    # We always dump twice from what we expect
+    # Dump stuff we might care about
     if True:
       def out(suffix, contents):
         with open(("out/command%d_" % self.commandCount)+ suffix, "wb") as f:
           f.write(contents)
-      buffer_size = pitch * height * 2
       out("pgraph.bin", dumpPGRAPH(xbox))
       out("pfb.bin", dumpPFB(xbox))
-      if offset2 != 0x00000000:
-        out("mem-2.bin", xbox.read(0x80000000 | offset2, buffer_size))
-      if offset3 != 0x00000000:
-        out("mem-3.bin", xbox.read(0x80000000 | offset3, buffer_size))
-
-    offset = offset2
+      if color_offset != 0x00000000:
+        out("mem-2.bin", xbox.read(0x80000000 | color_offset, color_pitch * height))
+      if depth_offset != 0x00000000:
+        out("mem-3.bin", xbox.read(0x80000000 | depth_offset, depth_pitch * height))
 
     
 
@@ -241,16 +225,20 @@ class Tracer():
     path = "command%d--color.png" % (self.commandCount)
     extraHTML = []
     extraHTML += ['<img height="128px" src="%s" alt="%s"/>' % (path, path)]
-    extraHTML += ['%d x %d [pitch = %d (0x%X)], at 0x%08X [PGRAPH: 0x%08X?], format 0x%X, type: 0x%X, swizzle: 0x%08X, 0x%08X [used %d]' % (width, height, pitch, pitch, offset, surface_color_offset, color_fmt, surface_type, swizzle_unk, swizzle_unk2, swizzled)]
+    extraHTML += ['%d x %d [pitch = %d (0x%X)], at 0x%08X, format 0x%X, type: 0x%X, swizzle: 0x%08X, 0x%08X [used %d]' % (width, height, color_pitch, color_pitch, color_offset, color_fmt, surface_type, swizzle_unk, swizzle_unk2, swizzled)]
     print(extraHTML[-1])
 
     try:
-      if offset == 0x00000000:
+      if color_offset == 0x00000000:
+        print("Color offset is null")
         raise Exception()
       else:
-        img = Texture.dumpTexture(xbox, offset, pitch, fmt_color, width, height)
+        print("Attempting to dump surface; swizzle: %s" % (str(swizzled)))
+        img = Texture.dumpTexture(xbox, color_offset, color_pitch, fmt_color, width, height)
     except:
       img = None
+      print("Failed to dump color surface")
+      traceback.print_exc()
 
     if img != None:
 

@@ -28,10 +28,10 @@ def decodeTexture(data, size, pitch, swizzled, bits_per_pixel, channel_sizes, ch
 
   #FIXME: Unswizzle data on the fly instead
   if swizzled:
-    if not disable_hack and width == 640 and height <= 480 and pitch == 2560:
-      data = nv2a.Unswizzle(data, bits_per_pixel, (width, height), pitch)
-    else:
-      data = nv2a._Unswizzle(data, bits_per_pixel, (width, height), pitch)
+    #if not disable_hack and width == 640 and height <= 480 and pitch == 2560:
+    #  data = nv2a.Unswizzle(data, bits_per_pixel, (width, height), pitch)
+    #else:
+    data = nv2a._Unswizzle(data, bits_per_pixel, (width, height), pitch)
 
   pixels = img.load() # create the pixel map
 
@@ -46,7 +46,13 @@ def decodeTexture(data, size, pitch, swizzled, bits_per_pixel, channel_sizes, ch
 
       pixel_channels = ()
       for channel_offset, channel_size in zip(channel_offsets, channel_sizes):
-        pixel_channels += (get_bits(pixel_bits, channel_offset, channel_size),)
+        channel_value = get_bits(pixel_bits, channel_offset, channel_size)
+
+        # Normalize channel
+        channel_value /= (1 << channel_size) - 1
+        channel_value = int(channel_value * 255)
+
+        pixel_channels += (channel_value,)
       pixels[x, y] = pixel_channels
 
   return img

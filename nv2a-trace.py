@@ -59,6 +59,7 @@ def main():
 
     # Stop consuming CACHE entries.
     disable_pgraph_fifo(xbox)
+    wait_until_pgraph_idle(xbox)
 
     # Kick the pusher, so that it fills the cache CACHE.
     resume_fifo_pusher(xbox)
@@ -114,12 +115,41 @@ def main():
 
   bytes_queued = 0
 
-  # Disable Z-buffer compression
+  # Disable Z-buffer compression and Tiling
   # FIXME: This is a dirty dirty hack which breaks PFB and PGRAPH state!
+  NV10_PGRAPH_RDI_INDEX = 0xFD400750
+  NV10_PGRAPH_RDI_DATA = 0xFD400754
   for i in range(8):
-    zcomp = xbox.read_u32(0xFD100300 + 4 * i)
-    xbox.write_u32(0xFD100300 + 4 * i, zcomp & 0x7FFFFFFF)
-    xbox.write_u32(0xFD400980 + 4 * i, zcomp & 0x7FFFFFFF)
+
+    # This is from a discussion on IRC:
+    #  mwk: the RDI copy is for texturing
+    #  mwk: the mmio PGRAPH copy is for drawing to the framebuffer
+
+    # Disabling Z-Compression seems to work fine
+    if True:
+      zcomp = xbox.read_u32(0xFD100300 + 4 * i)
+      zcomp &= 0x7FFFFFFF
+      xbox.write_u32(0xFD100300 + 4 * i, zcomp) # PFB
+      xbox.write_u32(0xFD400980 + 4 * i, zcomp) # PGRAPH
+      if True: # PGRAPH RDI
+        #FIXME: This scope should be atomic
+        xbox.write_u32(NV10_PGRAPH_RDI_INDEX, 0x00EA0090 + 4 * i)
+        xbox.write_u32(NV10_PGRAPH_RDI_DATA, zcomp)
+
+    # Disabling tiling entirely
+    if True:
+      tile_addr = xbox.read_u32(0xFD100240 + 16 * i)
+      tile_addr &= 0xFFFFFFFE
+      xbox.write_u32(0xFD100240 + 16 * i, tile_addr) # PFB
+      xbox.write_u32(0xFD400900 + 16 * i, tile_addr) # PGRAPH
+      if True: # PGRAPH RDI
+        #FIXME: This scope should be atomic
+        xbox.write_u32(NV10_PGRAPH_RDI_INDEX, 0x00EA0010 + 4 * i)
+        xbox.write_u32(NV10_PGRAPH_RDI_DATA, tile_addr)
+        #xbox.write_u32(NV10_PGRAPH_RDI_INDEX, 0x00EA0030 + 4 * i)
+        #xbox.write_u32(NV10_PGRAPH_RDI_DATA, tile_limit)
+        #xbox.write_u32(NV10_PGRAPH_RDI_INDEX, 0x00EA0050 + 4 * i)
+        #xbox.write_u32(NV10_PGRAPH_RDI_DATA, tile_pitch)
 
   # Create a new trace object
   trace = Trace.Tracer(v_dma_get_addr, v_dma_put_addr_real)
