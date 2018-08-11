@@ -136,9 +136,27 @@ format_depth = (surface_format >> 18) & 0x3
 depth_float = (read_word(pgraph, 0x1990) >> 29) & 1
 depth_float_str = "float" if depth_float else "fixed"
 
+color_formats = ('invalid',
+                 'Y8',
+                 'X1R5G5B5_Z1R5G5B5',
+                 'X1R5G5B5_O1R5G5B5',
+                 'A1R5G5B5',
+                 'R5G6B5',
+                 'Y16',
+                 'X8R8G8B8_Z8R8G8B8',
+                 'X8R8G8B8_O1Z7R8G8B8',
+                 'X1A7R8G8B8_Z1A7R8G8B8',
+                 'X1A7R8G8B8_O1A7R8G8B8',
+                 'X8R8G8B8_O8R8G8B8',
+                 'A8R8G8B8',
+                 'Y32',
+                 'V8YB8U8YA8',
+                 'YB8V8YA8U8')
+depth_formats = ('invalid','Z16','Z24S8')
+
 print("Clip is at %d x %d + %d, %d" % (clip_w, clip_h, clip_x, clip_y))
 print("Assuming surface size is %d x %d (pitch %d)" % (width, height, pitch))
-print("Surface format color: 0x%X depth: 0x%X (%s) %s" % (format_color, format_depth, ('invalid','Z16','Z24S8')[format_depth], depth_float_str))
+print("Surface format color: 0x%X (%s), depth: 0x%X (%s) %s" % (format_color, color_formats[format_color], format_depth, depth_formats[format_depth], depth_float_str))
 
 # Requirement for the tiling stuff?
 #FIXME: Why tho?
@@ -217,7 +235,7 @@ for i in range(pitch * height // bytes_per_pixel):
 
 assert(height % 16 == 0)
 
-mem_untiled = untile(mem_color, tile_lookup, bpp)
+mem_untiled = mem_color #untile(mem_color, tile_lookup, bpp)
 img = Texture.decodeTexture(mem_untiled, (width, height), pitch, False, bpp, (8,8,8), (16,8,0))
 img.save("untiled-tiles-color.png")
 
@@ -226,9 +244,13 @@ img.save("untiled-tiles-color-surface_clip.png")
 
 
 
-mem_untiled = untile(mem_depth, tile_lookup, bpp)
-img = Texture.decodeTexture(mem_untiled, (width, height), pitch, False, bpp, (8,0,0), (8,16,24))
+mem_untiled = mem_depth #untile(mem_depth, tile_lookup, bpp)
+img = Texture.decodeTexture(mem_untiled, (width, height), pitch, False, bpp, (8,8,8), (24,24,24))
 img.save("untiled-tiles-depth.png")
+
+mem_untiled = mem_depth #untile(mem_depth, tile_lookup, bpp)
+img = Texture.decodeTexture(mem_untiled, (width, height), pitch, False, bpp, (8,8,8), (0,0,0))
+img.save("untiled-tiles-stencil.png")
 
 
 

@@ -44,6 +44,7 @@ def has_large_tile(chipset):
 
 PFB_NV10 = 1
 PFB_NV20 = 2
+PFB_NV44 = 3
 
 def pfb_type(chipset):
   return PFB_NV20
