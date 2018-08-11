@@ -7,6 +7,8 @@ from PIL import Image, ImageDraw
 
 import Texture
 
+import helper
+
 import nv_tiles
 
 def load_out(path, suffix):
@@ -101,11 +103,11 @@ bswizzle5_hs = (bswizzle5 >> 24) & 0xF
 print("BSWIZZLE5: %d, %d" % (1 << bswizzle5_ws, 1 << bswizzle5_hs))
 
 
-surface = read_word(pgraph, 0x710)
-surface_type = surface & 3
-surface_anti_aliasing = (surface >> 4) & 3
+surface_type = read_word(pgraph, 0x710)
+surface_addressing = surface_type & 3
+surface_anti_aliasing = (surface_type >> 4) & 3
 
-surface_type_str = ("invalid", "non-swizzled", "swizzled")[surface_type]
+surface_type_str = ("invalid", "non-swizzled", "swizzled")[surface_addressing]
 surface_anti_aliasing_str = ("center-1 [none]", "center-corner-2", "square-offset-4")[surface_anti_aliasing]
 
 print("Surface type %s; anti-aliasing: %s" % (surface_type_str, surface_anti_aliasing_str))
@@ -125,14 +127,17 @@ clip_y = (surface_clip_y >> 0) & 0xFFFF
 clip_w = (surface_clip_x >> 16) & 0xFFFF
 clip_h = (surface_clip_y >> 16) & 0xFFFF
 
+clip_x, clip_y = helper.apply_anti_aliasing_factor(surface_anti_aliasing, clip_x, clip_y)
+clip_w, clip_h = helper.apply_anti_aliasing_factor(surface_anti_aliasing, clip_w, clip_h)
+
 width = clip_x + clip_w
 height = clip_y + clip_h
 
 pitch = read_word(pgraph, 0x858)
 
-surface_format = read_word(pgraph, 0x804)
-format_color = (surface_format >> 12) & 0xF
-format_depth = (surface_format >> 18) & 0x3
+draw_format = read_word(pgraph, 0x804)
+format_color = (draw_format >> 12) & 0xF
+format_depth = (draw_format >> 18) & 0x3
 depth_float = (read_word(pgraph, 0x1990) >> 29) & 1
 depth_float_str = "float" if depth_float else "fixed"
 
@@ -165,18 +170,6 @@ height = align_up(height, 16)
 bpp = int(sys.argv[2])
 
 
-print("SWI")
-swizzled = list(range(0, 640*480))
-
-def img_to_words(img):
-  words = []
-  for y in range(0, img.size[1]):
-    for x in range(0, img.size[0]):
-      r,g,b,a = img.getpixel((x,y))
-      words += [(r << 0) | (g << 8) | (b << 16) | (a << 24)]
-  return words
-
-swizzled_bytes = struct.pack("<" + "L" * len(swizzled), *swizzled)
 
 
 def untile(data, lookup, bpp):
@@ -189,31 +182,6 @@ def untile(data, lookup, bpp):
 
 
 
-
-if False:
-  print("HCK")
-  img = Texture.decodeTexture(swizzled_bytes, (640, 480), 2560, True, 32, (8,8,8,8), (0,8,16,24))
-  hack = img_to_words(img)
-
-  print("GEN")
-  generated = []
-  for v in range(0, 8):
-
-
-    for u in range(0, 4):
-      for z in range(0, 640 // 64):
-        for y in range(0, 4):
-          for x1 in range(0, 2):
-            for x2 in range(0, 8):
-              in_block = z * 1024 + y * 64 + (x1 * 8 + x2)
-
-              generated += [v * 264 + u * 16 + in_block]
-
-  mem_untiled = untile(mem_color, hack, 32)
-  img = Texture.decodeTexture(mem_untiled, (640, 480), 2560, False, 32, (8,8,8), (16,8,0))
-  img.save("untiled-hack.png")
-
-  
 
 
 # These are assumptions, need to look at envytools to confirm

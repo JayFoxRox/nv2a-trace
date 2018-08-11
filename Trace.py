@@ -179,6 +179,11 @@ class Tracer():
     clip_w = (surface_clip_x >> 16) & 0xFFFF
     clip_h = (surface_clip_y >> 16) & 0xFFFF
 
+    surface_anti_aliasing = (surface_type >> 4) & 3
+
+    clip_x, clip_y = apply_anti_aliasing_factor(surface_anti_aliasing, clip_x, clip_y)
+    clip_w, clip_h = apply_anti_aliasing_factor(surface_anti_aliasing, clip_w, clip_h)
+
     width = clip_x + clip_w
     height = clip_y + clip_h
 
@@ -190,18 +195,12 @@ class Tracer():
     swizzled = ((surface_type & 3) == 2)
     #FIXME: if surface_type is 0, we probably can't even draw..
 
+    format_color = (draw_format >> 12) & 0xF
+    format_depth = (draw_format >> 18) & 0x3
 
-    color_fmt = (draw_format >> 12) & 0xF
-    if color_fmt == 0x3: # ARGB1555
-      fmt_color = 0x3 if swizzled else 0x1C
-    elif color_fmt == 0x5: # RGB565
-      fmt_color = 0x5 if swizzled else 0x11
-    elif color_fmt == 0x7 or color_fmt == 0x8: # XRGB8888
-      fmt_color = 0x7 if swizzled else 0x1E
-    elif color_fmt == 0xC: # ARGB8888
-      fmt_color = 0x6 if swizzled else 0x12
-    else:
-      raise Exception("Oops! Unknown color fmt %d (0x%X)" % (color_fmt, color_fmt))
+    fmt_color = Texture.surface_color_format_to_texture_format(format_color, swizzled)
+    #fmt_depth = Texture.surface_zeta_format_to_texture_format(format_depth)
+   
 
 
 
@@ -225,7 +224,7 @@ class Tracer():
     path = "command%d--color.png" % (self.commandCount)
     extraHTML = []
     extraHTML += ['<img height="128px" src="%s" alt="%s"/>' % (path, path)]
-    extraHTML += ['%d x %d [pitch = %d (0x%X)], at 0x%08X, format 0x%X, type: 0x%X, swizzle: 0x%08X, 0x%08X [used %d]' % (width, height, color_pitch, color_pitch, color_offset, color_fmt, surface_type, swizzle_unk, swizzle_unk2, swizzled)]
+    extraHTML += ['%d x %d [pitch = %d (0x%X)], at 0x%08X, format 0x%X, type: 0x%X, swizzle: 0x%08X, 0x%08X [used %d]' % (width, height, color_pitch, color_pitch, color_offset, format_color, surface_type, swizzle_unk, swizzle_unk2, swizzled)]
     print(extraHTML[-1])
 
     try:
