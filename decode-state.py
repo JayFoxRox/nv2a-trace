@@ -28,10 +28,6 @@ pfb = load_out(path, "pfb.bin")
 def align_up(v, alignment):
   return v + (alignment - (v % alignment)) % alignment
 
-# This configures how tiling works
-cfg0 = read_word(pfb, 0x200)
-cfg1 = read_word(pfb, 0x204)
-mcc = nv_tiles.mc_config(cfg0, cfg1)
 
 print("\nSubchannels:")
 for i in range(8):
@@ -40,6 +36,12 @@ for i in range(8):
 print("")
 
 print("\nTiles:")
+
+# This configures how tiling works
+cfg0 = read_word(pfb, 0x200)
+cfg1 = read_word(pfb, 0x204)
+mcc = nv_tiles.mc_config(cfg0, cfg1)
+
 for i in range(8):
 
   # Also in PGRAPH 0x900?!
@@ -72,8 +74,8 @@ for i in range(8):
   pgraph_zcomp = read_word(pgraph, 0x980 + 4 * i)
 
   zcomp_enabled_str = "compressed" if zcomp_enabled else "uncompressed"
-  
-  print("     Z-compression: %s 0x%08X, 0x%08X" % (zcomp_enabled_str, fb_zcomp, pgraph_zcomp))
+
+  print("    Z-compression: %s 0x%08X, 0x%08X" % (zcomp_enabled_str, fb_zcomp, pgraph_zcomp))
 
 print("")
 
@@ -139,7 +141,8 @@ clip_w, clip_h = helper.apply_anti_aliasing_factor(surface_anti_aliasing, clip_w
 width = clip_x + clip_w
 height = clip_y + clip_h
 
-pitch = read_word(pgraph, 0x858)
+color_pitch = read_word(pgraph, 0x858)
+depth_pitch = read_word(pgraph, 0x85C)
 
 draw_format = read_word(pgraph, 0x804)
 format_color = (draw_format >> 12) & 0xF
@@ -166,7 +169,7 @@ color_formats = ('invalid',
 depth_formats = ('invalid','Z16','Z24S8')
 
 print("Clip is at %d x %d + %d, %d" % (clip_w, clip_h, clip_x, clip_y))
-print("Assuming surface size is %d x %d (pitch %d)" % (width, height, pitch))
+print("Assuming surface size is %d x %d (color pitch %d; depth pitch %d)" % (width, height, color_pitch, depth_pitch))
 print("Surface format color: 0x%X (%s), depth: 0x%X (%s) %s" % (format_color, color_formats[format_color], format_depth, depth_formats[format_depth], depth_float_str))
 
 # Requirement for the tiling stuff?
@@ -200,17 +203,21 @@ mode = 0
 
 bytes_per_pixel = bpp // 8
 
-tile_lookup = []
-for i in range(pitch * height // bytes_per_pixel):
-  tile_lookup += [nv_tiles.tile_translate_addr(chipset, pitch, i * bytes_per_pixel, mode, bankoff, mcc)[2] // bytes_per_pixel]
+if False:
+  color_tile_lookup = []
+  for i in range(pitch * height // bytes_per_pixel):
+    color_tile_lookup += [nv_tiles.tile_translate_addr(chipset, color_pitch, i * bytes_per_pixel, mode, bankoff, mcc)[2] // bytes_per_pixel]
 
+  depth_tile_lookup = []
+  for i in range(pitch * height // bytes_per_pixel):
+    depth_tile_lookup += [nv_tiles.tile_translate_addr(chipset, depth_pitch, i * bytes_per_pixel, mode, bankoff, mcc)[2] // bytes_per_pixel]
 
 
 
 assert(height % 16 == 0)
 
-mem_untiled = mem_color #untile(mem_color, tile_lookup, bpp)
-img = Texture.decodeTexture(mem_untiled, (width, height), pitch, False, bpp, (8,8,8), (16,8,0))
+mem_untiled = mem_color #untile(mem_color, color_tile_lookup, bpp)
+img = Texture.decodeTexture(mem_untiled, (width, height), color_pitch, False, bpp, (8,8,8), (16,8,0))
 img.save("untiled-tiles-color.png")
 
 ImageDraw.Draw(img).rectangle([clip_x - 1, clip_y - 1, clip_x + clip_w + 1, clip_y + clip_h + 1], fill=None, outline=(255, 0, 0))
@@ -218,27 +225,10 @@ img.save("untiled-tiles-color-surface_clip.png")
 
 
 
-mem_untiled = mem_depth #untile(mem_depth, tile_lookup, bpp)
-img = Texture.decodeTexture(mem_untiled, (width, height), pitch, False, bpp, (8,8,8), (24,24,24))
+mem_untiled = mem_depth #untile(mem_depth, depth_tile_lookup, bpp)
+img = Texture.decodeTexture(mem_untiled, (width, height), depth_pitch, False, bpp, (8,8,8), (24,24,24))
 img.save("untiled-tiles-depth.png")
 
-mem_untiled = mem_depth #untile(mem_depth, tile_lookup, bpp)
-img = Texture.decodeTexture(mem_untiled, (width, height), pitch, False, bpp, (8,8,8), (0,0,0))
+mem_untiled = mem_depth #untile(mem_depth, depth_tile_lookup, bpp)
+img = Texture.decodeTexture(mem_untiled, (width, height), depth_pitch, False, bpp, (8,8,8), (0,0,0))
 img.save("untiled-tiles-stencil.png")
-
-
-
-if False:
-  print("---")
-
-  print("SWI: \n%s\n" % str(swizzled[0:100]))
-  print("HCK: \n%s\n" % str(hack[0:100]))
-  print("GEN: \n%s\n" % str(generated[0:100]))
-
-  try:
-    for x in range(len(hack)):
-      print("%d: %d == %d ?" % (x, hack[x], generated[x]))
-      assert(hack[x] == generated[x])
-  except:
-    print("FAIL!")
-    pass
