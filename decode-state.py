@@ -15,6 +15,7 @@ def load_out(path, suffix):
   return open(path + "_" + suffix, "rb").read()
 
 def read_word(storage, offset):
+  offset &= 0xFFFF
   return struct.unpack_from("<L", storage, offset)[0]
 
 path = sys.argv[1]
@@ -34,6 +35,279 @@ for i in range(8):
   grclass = read_word(pgraph,0x160 + i * 4) & 0xFF
   print("[%d] Graphics class: 0x%02X" % (i, grclass))
 print("")
+
+print("\nRegister combiners:")
+
+#FIXME: PArse this completly
+combinectl = read_word(pgraph, 0x00401940)
+stage_count = combinectl & 0xF
+mux_bit = (combinectl >> 8) & 1
+unique_cf0 = (combinectl >> 12) & 1
+unique_cf1 = (combinectl >> 16) & 1
+
+mux_bit_str = "MSB" if mux_bit else "LSB"
+
+regs = tuple('r%d' % x for x in range(16))
+
+#FIXME: Possibly bad order!
+input_regs = ('ZERO',
+'CONSTANT_COLOR0_NV',
+'CONSTANT_COLOR1_NV',
+'FOG',
+'PRIMARY_COLOR_NV',
+'SECONDARY_COLOR_NV',
+'<invalid:6>',
+'<invalid:7>',
+'TEXTURE0_ARB',
+'TEXTURE1_ARB',
+'TEXTURE2_ARB',
+'TEXTURE3_ARB',
+'SPARE0_NV',
+'SPARE1_NV',
+'<invalid:14>',
+'<invalid:15>')
+
+output_regs = ('DISCARD_NV',
+'<invalid:1>'
+'<invalid:2>'
+'<invalid:3>'
+'PRIMARY_COLOR_NV',
+'SECONDARY_COLOR_NV',
+'<invalid:6>',
+'<invalid:7>',
+'TEXTURE0_ARB',
+'TEXTURE1_ARB',
+'TEXTURE2_ARB',
+'TEXTURE3_ARB',
+'SPARE0_NV',
+'SPARE1_NV',
+'<invalid:14>',
+'<invalid:15>')
+
+mappings = ('UNSIGNED_IDENTITY',
+            'UNSIGNED_INVERT',
+            'EXPAND_NORMAL',
+            'EXPAND_NEGATE',
+            'HALFBIAS_NORMAL',
+            'HALFBIAS_NEGATE',
+            'SIGNED_IDENTITY',
+            'SIGNED_NEGATE')
+
+mappings_code = ('max(0, %s)',
+                 '(1 - clamp(%s, 0, 1))',
+                 '(2 * max(0, %s) - 1)',
+                 '(-2 * max(0, %s) + 1)',
+                 '(max(0, %s) - 0.5)',
+                 '(-max(0, %s) + 0.5)',
+                 '%s',
+                 '-%s')
+
+def decode_in_reg(word, shift, is_alpha = False):
+  v = word >> shift
+  mapping = (v >> 5) & 0x7
+  alpha = (v >> 4) & 1
+  source = (v >> 0) & 0xF
+
+  #FIXME: Only allowed in final combiner!
+  assert(source != 0xE) # SPARE0_PLUS_SECONDARY_COLOR_NV
+  assert(source != 0xF) # E_TIMES_F_NV
+
+  s = regs[source]
+
+  #FIXME: This might be wrong?
+  if not is_alpha:
+    s += ".aaa" if alpha else ".rgb"
+  else:
+    assert(source != 3) # FIXME: This is supposed to look for FOG
+    s += ".a" if alpha else ".b"
+  return mappings_code[mapping] % s
+
+def decode_register_combiner_stage(stage, is_alpha):
+
+
+  if not is_alpha:
+    combine_input = read_word(pgraph, 0x00401900 + stage * 4)
+  else:
+    combine_input = read_word(pgraph, 0x004018C0 + stage * 4)
+
+  a = decode_in_reg(combine_input, 24, is_alpha)
+  b = decode_in_reg(combine_input, 16, is_alpha)
+  c = decode_in_reg(combine_input, 8, is_alpha)
+  d = decode_in_reg(combine_input, 0, is_alpha)
+
+  if not is_alpha:
+    combine_output = read_word(pgraph, 0x00401920 + stage * 4)
+
+    #FIXME: Support these!
+    b_to_a_ab = (combine_output >> 19) & 1
+    b_to_a_cd = (combine_output >> 18) & 1
+  else:
+    combine_output = read_word(pgraph, 0x004018E0 + stage * 4)
+    b_to_a_ab = False
+    b_to_a_cd = False
+
+  op = (combine_output >> 15) & 7
+  ops = ('NOSHIFT',
+         'NOSHIFT_BIAS',
+         'SHIFTLEFTBY1',
+         'SHIFTLEFTBY1_BIAS',
+         'SHIFTLEFTBY2',
+         'SHIFTRIGHTBY1')
+  ops_code = ('%s',
+              '(%s - 0.5)',
+              '(%s * 2)',
+              '((%s - 0.5) * 2)',
+              '(%s * 4)',
+              '(%s / 2)')
+  mux_enable = (combine_output >> 14) & 1
+  ab_dot_enable = (combine_output >> 13) & 1
+  cd_dot_enable = (combine_output >> 12) & 1
+  sum_dst = (combine_output >> 8) & 0xF
+  ab_dst = (combine_output >> 4) & 0xF
+  cd_dst = (combine_output >> 0) & 0xF
+
+  op_code = ops_code[op]
+
+  def get_out(is_dot_product, gcc_x, gcc_y, gcc_z):
+
+    if not is_alpha:
+
+      if is_dot_product == False:
+        res_str = op_code % gcc_x
+      else:
+        res_str = op_code % gcc_y
+
+    else:
+
+      if is_dot_product == False:
+        res_str = op_code % gcc_z
+      else:
+        res_str = "<invalid>" # FIXME: Assert?
+        assert(False)
+
+    return res_str
+
+  # "gcc" stands for general combiner computation.
+
+  if not is_alpha:
+    gcc1 = "%s * %s" % (a, b)
+    gcc2 = "vec3(dot(%s, %s))" % (a, b)
+    gcc3 = "%s * %s" % (c, d)
+    gcc4 = "vec3(dot(%s, %s))" % (c, d)
+    gcc5 = "%s + %s" % (gcc1, gcc3)
+    gcc6 = "mix(%s, %s, SPARE0_NV.a & %s)" % (gcc3, gcc1, mux_bit_str)
+  else:
+    gcc1 = "%s * %s" % (a, b)
+    gcc2 = "%s * %s" % (c, d)
+    gcc3 = "%s + %s" % (gcc1, gcc2)
+    gcc4 = "mix(%s, %s, SPARE0_NV.a & %s)" % (gcc2, gcc1, mux_bit_str)
+
+  def get_sum_out(mux_enable):
+    if not is_alpha:
+      if mux_enable == False:
+        rgb_str = op_code % gcc5
+      else:
+        rgb_str = op_code % gcc6
+      return rgb_str
+    else:
+      if mux_enable == False:
+        a_str = op_code % gcc3
+      else:
+        a_str = op_code % gcc4
+      return a_str
+
+
+
+  ab_out = regs[ab_dst]
+  if not is_alpha:
+    ab_out += ".rgb"
+  else:
+    ab_out += ".a  "
+  ab_out += " = " + get_out(ab_dot_enable, gcc1, gcc2, gcc1)
+  if b_to_a_ab:
+    #FIXME: Will this still write RGB?
+    ab_out += "; %s.a = %s.b" % (regs[ab_dst], regs[ab_dst])
+
+  cd_out = regs[cd_dst]
+  if not is_alpha:
+    cd_out += ".rgb"
+  else:
+    cd_out += ".a  "
+  cd_out += " = " + get_out(cd_dot_enable, gcc3, gcc4, gcc2)
+  if b_to_a_cd:
+    #FIXME: Will this still write RGB?
+    cd_out += "; %s.a = %s.b" % (regs[cd_dst], regs[cd_dst])
+
+  sum_out = regs[sum_dst]
+  if not is_alpha:
+    sum_out += ".rgb"
+  else:
+    sum_out += ".a  "
+  sum_out += " = " + get_sum_out(mux_enable)
+
+  return (ab_out, cd_out, sum_out) #FIXME
+
+def decode_final_register_combiner():
+
+  fc0 = read_word(pgraph, 0x00401944)
+  a = decode_in_reg(fc0, 24)
+  b = decode_in_reg(fc0, 16)
+  c = decode_in_reg(fc0, 8)
+  d = decode_in_reg(fc0, 0)
+  fc1 = read_word(pgraph, 0x00401948)
+  e = decode_in_reg(fc1, 24)
+  f = decode_in_reg(fc1, 16)
+  g = decode_in_reg(fc1, 8, is_alpha=True) # Alpha scalar
+
+  #FIXME: add these to output!
+  specular_clamp = (fc1 >> 7) & 1
+  specular_add_invr5 = (fc1 >> 6) & 1
+  specular_add_invr12 = (fc1 >> 5) & 1
+
+  comment = "E: %s; F: %s; clamp: %d; invr5: %d; invr12: %d" % (e, f, specular_clamp, specular_add_invr5, specular_add_invr12)
+  rgb_str = "mix(%s, %s, %s) + %s" % (c, b, a, d)
+  a_str = "%s" % (g)
+
+  return (comment, rgb_str, a_str)
+
+print("- AB, CD and SUM run in parallel")
+print("- Each result is clamped to [-1, +1]")
+
+print("unique_cf0: %d" % unique_cf0) # FIXME: Integrate in code
+print("unique_cf1: %d" % unique_cf1) # FIXME: Integrate in code
+for i in range(8):
+  if i >= stage_count:
+    # FIXME: Still print it, but clearly mark it as disabled
+    break
+  rbg_str = decode_register_combiner_stage(i, is_alpha = False)
+  a_str = decode_register_combiner_stage(i, is_alpha = True)
+
+  def get_rgba(combinefactor):
+    r = (combinefactor >> 16) & 0xFF
+    g = (combinefactor >> 8) & 0xFF
+    b = (combinefactor >> 0) & 0xFF
+    a = (combinefactor >> 24) & 0xFF
+    return (r, g, b, a)
+
+  combinefactor0 = read_word(pgraph, 0x00401880 + 4 * i)
+  combinefactor1 = read_word(pgraph, 0x004018A0 + 4 * i)
+
+  print("[%d] CF0.rgba = to_vec4(0x%02X, 0x%02X, 0x%02X, 0x%02X)" % (i, *get_rgba(combinefactor0)))
+  print("    CF1.rgba = to_vec4(0x%02X, 0x%02X, 0x%02X, 0x%02X)" % (     get_rgba(combinefactor1)))
+  print("    %s # AB" % (rbg_str[0]))
+  print("    %s" %      (a_str[0]))
+  print("    %s # CD" % (rbg_str[1]))
+  print("    %s" %      (a_str[1]))
+  print("    %s # SUM" % (rbg_str[2]))
+  print("    %s" %       (a_str[2]))
+final_combiner_str = decode_final_register_combiner()
+print("[*] # %s" % (final_combiner_str[0]))
+print("    CF0.rgba = to_vec4(...)") # FIXME: 0x004019AC
+print("    CF1.rgba = to_vec4(...)") # FIXME: 0x004019B0
+print("    output.rgb = %s" % (final_combiner_str[1]))
+print("    output.a   = %s" % (final_combiner_str[2]))
+print("")
+
 
 print("\nTiles:")
 
