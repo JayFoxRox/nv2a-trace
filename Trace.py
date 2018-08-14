@@ -271,6 +271,66 @@ class Tracer():
     if data == 0:
       return []
 
+    # Optioally configure GPU for "output.rgba = vec4(vec3(fogFactor), 1.0)"
+    if False:
+      # a = ZERO = 0x0
+      # b = ZERO = 0x0
+      # c = ZERO = 0x0
+      # d = FOG | ALPHA = (1 << 4) | (3 << 0)
+      combinespecfog0 = (1 << 4) | (3 << 0)
+
+      # g = UNSIGNED_INVERT | ZERO = (1 << 13)
+      combinespecfog1 = (1 << 13)
+
+      xbox.write_u32(0xFD401944, combinespecfog0)
+      xbox.write_u32(0xFD401948, combinespecfog1)
+
+    # Fog-Gen stuff
+    if False:
+      csv0_d = xbox.read_u32(0xFD400FB4)
+
+      fog_mode = (csv0_d >> 21) & 1
+      #fog_modes_str = ('LINEAR', 'EXP')
+      #print("Mode: %s" % (fog_modes_str[fog_mode]))
+
+      fog_genmode = (csv0_d >> 22) & 0x7
+      #fog_genmodes_str = ('SPEC_ALPHA', 'RADIAL', 'PLANAR', 'ABS_PLANAR', 'FOG_X')
+      #print("Gen-Mode: %s" % (fog_genmodes_str[fog_genmode]))
+
+      fog_enable = (csv0_d >> 19) & 1
+      #print("Fog-Enable: %s" % (str(fog_enable)))
+
+      if True:
+        csv0_d &= ~(0x7 << 22) # Use FOG_x
+        csv0_d |= (4 << 22)
+
+      if False:
+        # Disable fog for testing
+        csv0_d &= ~(1 << 19)
+
+      xbox.write_u32(0xFD400FB4, csv0_d)
+
+    if False:
+      control_3 = xbox.read_u32(0xFD401958)
+
+      fog_mode = (control_3 >> 16) & 0x7
+      fog_modes_str = ('LINEAR', 'EXP', '<unknown:2>' 'EXP2', 'LINEAR_ABS', 'EXP_ABS', '<unknown:6>', 'EXP2_ABS')
+      print("Mode: %s" % (fog_modes_str[fog_mode]))
+
+      fog_enable = (control_3 >> 8) & 1
+      print("Enable: %s" % str(fog_enable))
+
+      fog_color = read_word(pgraph, 0x00401980)
+      print("Color: 0x%08X" % (fog_color))
+
+      fog_param0 = read_word(pgraph, 0x00401984)
+      print("Parameter[0] (bias): 0x%08X (%f)" % (fog_param0, decode_float(fog_param0)))
+      fog_param1 = read_word(pgraph, 0x00401988)
+      print("Parameter[1] (scale): 0x%08X (%f)" % (fog_param1, decode_float(fog_param1)))
+
+      xbox.write_u32(0xFD401958, control_3)
+
+
     extraHTML = []
     extraHTML += self.DumpTextures(xbox, data, *args)
     return extraHTML
