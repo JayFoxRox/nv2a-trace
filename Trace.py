@@ -332,7 +332,8 @@ class Tracer():
 
 
     extraHTML = []
-    extraHTML += self.DumpTextures(xbox, data, *args)
+    #extraHTML += self.DumpSurfaces(xbox, data, *args)
+    #extraHTML += self.DumpTextures(xbox, data, *args)
     return extraHTML
 
   def HandleEnd(self, xbox, data, *args):
