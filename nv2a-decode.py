@@ -18,6 +18,9 @@ def read_word(storage, offset):
   offset &= 0xFFFF
   return struct.unpack_from("<L", storage, offset)[0]
 
+def decode_float(word):
+  return struct.unpack("<f", struct.pack("<L", word))[0]
+
 path = sys.argv[1]
 
 mem_color = load_out(path, "mem-2.bin")
@@ -35,6 +38,60 @@ for i in range(8):
   grclass = read_word(pgraph,0x160 + i * 4) & 0xFF
   print("[%d] Graphics class: 0x%02X" % (i, grclass))
 print("")
+
+# Dump pipeline
+if True:
+  csv0_d = read_word(pgraph, 0x00400FB4)
+
+  pipeline = (csv0_d >> 30) & 0x3
+  pipelines_str = ("Fixed-Function", "<unknown:1>", "Program")
+  print("\nVertex Pipeline: %s" % (pipelines_str[pipeline]))
+
+  if pipeline == 0:
+    print("<Fixed-Function configuration>")
+  elif pipeline == 2:
+    print("<Program>") # FIXME: Disassemble the program here
+  else:
+    assert(False)
+
+
+  print("\nFog-gen:")
+
+  fog_mode = (csv0_d >> 21) & 1
+  fog_modes_str = ('LINEAR', 'EXP')
+  print("Mode: %s" % (fog_modes_str[fog_mode]))
+
+  fog_genmode = (csv0_d >> 22) & 0x7
+  fog_genmodes_str = ('SPEC_ALPHA', 'RADIAL', 'PLANAR', 'ABS_PLANAR', 'FOG_X')
+  print("Gen-Mode: %s" % (fog_genmodes_str[fog_genmode]))
+
+  fog_enable = (csv0_d >> 19) & 1
+  print("Fog-Enable: %s" % (str(fog_enable)))
+
+  print("")
+
+
+if True:
+  print("\nFog:")
+
+  control_3 = read_word(pgraph, 0x00401958)
+
+  fog_mode = (control_3 >> 16) & 0x7
+  fog_modes_str = ('LINEAR', 'EXP', '<unknown:2>' 'EXP2', 'LINEAR_ABS', 'EXP_ABS', '<unknown:6>', 'EXP2_ABS')
+  print("Mode: %s" % (fog_modes_str[fog_mode]))
+
+  fog_enable = (control_3 >> 8) & 1
+  print("Enable: %s" % str(fog_enable))
+
+  fog_color = read_word(pgraph, 0x00401980)
+  print("Color: 0x%08X" % (fog_color))
+
+  fog_param0 = read_word(pgraph, 0x00401984)
+  print("Parameter[0] (bias): 0x%08X (%f)" % (fog_param0, decode_float(fog_param0)))
+  fog_param1 = read_word(pgraph, 0x00401988)
+  print("Parameter[1] (scale): 0x%08X (%f)" % (fog_param1, decode_float(fog_param1)))
+
+  print("")
 
 print("\nRegister combiners:")
 
