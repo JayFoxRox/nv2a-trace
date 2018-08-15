@@ -112,11 +112,11 @@ if True:
 
 
       instructions = VertexProgram.get_instruction(instruction)
-      print("0x%X: 0x%08X 0x%08X 0x%08X 0x%08X %s" % (program_offset,
+      print("0x%02X: 0x%08X 0x%08X 0x%08X 0x%08X %s" % (program_offset,
             instruction[0], instruction[1], instruction[2], instruction[3],
             instructions[0]))
       for instruction_str in instructions[1:]:
-        print("                                                %s", instruction_str)
+        print("                                                  %s" % (instruction_str))
 
       # Break if this was the final instruction
       #FIXME: What if there is no marker at the last program word?
