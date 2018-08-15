@@ -13,23 +13,38 @@ import helper
 import nv_tiles
 
 def load_out(path, suffix):
-  return open(path + "_" + suffix, "rb").read()
+  full_path = path + "_" + suffix
+  try:
+    return open(full_path, "rb").read()
+  except FileNotFoundError:
+    print("Failed to load '%s'" % full_path)
+    return None
 
 def read_nv2a_mem_word(accessor, offset):
   assert((offset & 0xFF000000) == 0)
-  component = (offset >> 16) & 0xFF
+  section = (offset >> 16) & 0xFF
   offset &= 0xFFFF
-  if component == 0x10:
+  if section == 0x10:
     storage = accessor[1] # PFB
-  elif component == 0x40:
+  elif section == 0x40:
     storage = accessor[2] # PGRAPH
   else:
     assert(False)
   return struct.unpack_from("<L", storage, offset)[0]
 
 def read_nv2a_pgraph_rdi_word(accessor, offset):
-  #FIXME!
-  return 0x00000000
+  assert((offset & 0xFF000000) == 0)
+  section = (offset >> 16) & 0xFF
+  offset &= 0xFFFF
+  if section == 0x10:
+    storage = accessor[1] # vp-instructions
+  elif section == 0x17:
+    storage = accessor[2] # vp-constants0
+  elif section == 0xCC:
+    storage = accessor[3] # vp-constants1
+  else:
+    assert(False)
+  return struct.unpack_from("<L", storage, offset)[0]
 
 def read_word(accessor, offset):
   return accessor[0](accessor, offset)
@@ -42,11 +57,13 @@ path = sys.argv[1]
 mem_color = load_out(path, "mem-2.bin")
 mem_depth = load_out(path, "mem-3.bin")
 pgraph = load_out(path, "pgraph.bin")
-pgraph_rdi = None # FIXME
 pfb = load_out(path, "pfb.bin")
+pgraph_rdi_vp_instructions = load_out(path, "pgraph-rdi-vp-instructions.bin")
+pgraph_rdi_vp_constants0 = load_out(path, "pgraph-rdi-vp-constants0.bin")
+pgraph_rdi_vp_constants1 = load_out(path, "pgraph-rdi-vp-constants1.bin")
 
 nv2a_mem = (read_nv2a_mem_word, pfb, pgraph)
-nv2a_pgraph_rdi = (read_nv2a_pgraph_rdi_word, pgraph_rdi)
+nv2a_pgraph_rdi = (read_nv2a_pgraph_rdi_word, pgraph_rdi_vp_instructions, pgraph_rdi_vp_constants0, pgraph_rdi_vp_constants1)
 
 
 def align_up(v, alignment):
@@ -100,9 +117,11 @@ if True:
             instructions[0]))
       for instruction_str in instructions[1:]:
         print("                                                %s", instruction_str)
-        
 
-      if instruction[0] & 0x80000000:
+      # Break if this was the final instruction
+      #FIXME: What if there is no marker at the last program word?
+      #       We should be able to see such problems in the output
+      if instruction[0] & 0x00000001:
         break
 
   else:
@@ -604,19 +623,20 @@ if False:
 
 assert(height % 16 == 0)
 
-mem_untiled = mem_color #untile(mem_color, color_tile_lookup, bpp)
-img = Texture.decodeTexture(mem_untiled, (width, height), color_pitch, False, bpp, (8,8,8), (16,8,0))
-img.save("untiled-tiles-color.png")
+if mem_color:
+  mem_untiled = mem_color #untile(mem_color, color_tile_lookup, bpp)
+  img = Texture.decodeTexture(mem_untiled, (width, height), color_pitch, False, bpp, (8,8,8), (16,8,0))
+  img.save("untiled-tiles-color.png")
 
-ImageDraw.Draw(img).rectangle([clip_x - 1, clip_y - 1, clip_x + clip_w + 1, clip_y + clip_h + 1], fill=None, outline=(255, 0, 0))
-img.save("untiled-tiles-color-surface_clip.png")
+  ImageDraw.Draw(img).rectangle([clip_x - 1, clip_y - 1, clip_x + clip_w + 1, clip_y + clip_h + 1], fill=None, outline=(255, 0, 0))
+  img.save("untiled-tiles-color-surface_clip.png")
 
 
+if mem_depth:
+  mem_untiled = mem_depth #untile(mem_depth, depth_tile_lookup, bpp)
+  img = Texture.decodeTexture(mem_untiled, (width, height), depth_pitch, False, bpp, (8,8,8), (24,24,24))
+  img.save("untiled-tiles-depth.png")
 
-mem_untiled = mem_depth #untile(mem_depth, depth_tile_lookup, bpp)
-img = Texture.decodeTexture(mem_untiled, (width, height), depth_pitch, False, bpp, (8,8,8), (24,24,24))
-img.save("untiled-tiles-depth.png")
-
-mem_untiled = mem_depth #untile(mem_depth, depth_tile_lookup, bpp)
-img = Texture.decodeTexture(mem_untiled, (width, height), depth_pitch, False, bpp, (8,8,8), (0,0,0))
-img.save("untiled-tiles-stencil.png")
+  mem_untiled = mem_depth #untile(mem_depth, depth_tile_lookup, bpp)
+  img = Texture.decodeTexture(mem_untiled, (width, height), depth_pitch, False, bpp, (8,8,8), (0,0,0))
+  img.save("untiled-tiles-stencil.png")
