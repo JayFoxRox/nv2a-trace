@@ -6,6 +6,7 @@ import struct
 from PIL import Image, ImageDraw
 
 import Texture
+import VertexProgram
 
 import helper
 
@@ -14,9 +15,24 @@ import nv_tiles
 def load_out(path, suffix):
   return open(path + "_" + suffix, "rb").read()
 
-def read_word(storage, offset):
+def read_nv2a_mem_word(accessor, offset):
+  assert((offset & 0xFF000000) == 0)
+  component = (offset >> 16) & 0xFF
   offset &= 0xFFFF
+  if component == 0x10:
+    storage = accessor[1] # PFB
+  elif component == 0x40:
+    storage = accessor[2] # PGRAPH
+  else:
+    assert(False)
   return struct.unpack_from("<L", storage, offset)[0]
+
+def read_nv2a_pgraph_rdi_word(accessor, offset):
+  #FIXME!
+  return 0x00000000
+
+def read_word(accessor, offset):
+  return accessor[0](accessor, offset)
 
 def decode_float(word):
   return struct.unpack("<f", struct.pack("<L", word))[0]
@@ -26,7 +42,11 @@ path = sys.argv[1]
 mem_color = load_out(path, "mem-2.bin")
 mem_depth = load_out(path, "mem-3.bin")
 pgraph = load_out(path, "pgraph.bin")
+pgraph_rdi = None # FIXME
 pfb = load_out(path, "pfb.bin")
+
+nv2a_mem = (read_nv2a_mem_word, pfb, pgraph)
+nv2a_pgraph_rdi = (read_nv2a_pgraph_rdi_word, pgraph_rdi)
 
 
 def align_up(v, alignment):
@@ -35,13 +55,13 @@ def align_up(v, alignment):
 
 print("\nSubchannels:")
 for i in range(8):
-  grclass = read_word(pgraph,0x160 + i * 4) & 0xFF
+  grclass = read_word(nv2a_mem, 0x400160 + i * 4) & 0xFF
   print("[%d] Graphics class: 0x%02X" % (i, grclass))
 print("")
 
 # Dump pipeline
 if True:
-  csv0_d = read_word(pgraph, 0x00400FB4)
+  csv0_d = read_word(nv2a_mem, 0x400FB4)
 
   pipeline = (csv0_d >> 30) & 0x3
   pipelines_str = ("Fixed-Function", "<unknown:1>", "Program")
@@ -51,6 +71,40 @@ if True:
     print("<Fixed-Function configuration>")
   elif pipeline == 2:
     print("<Program>") # FIXME: Disassemble the program here
+
+    print("Constants:")
+    for i in range(0, 192):
+      v = []
+      for j in range(4):
+        # Mirror at 0xCC0000 ?
+        v += [read_word(nv2a_pgraph_rdi, 0x170000 + i * 16 + j * 4)]
+      print("c[%d]: 0x%08X 0x%08X 0x%08X 0x%08X (%f, %f, %f, %f)" % (i - 96,
+            v[0], v[1], v[2], v[3],
+            decode_float(v[0]), decode_float(v[1]), decode_float(v[2]), decode_float(v[3])))
+
+    print("Instructions:")
+    csv0_c = read_word(nv2a_mem, 0x400FB8)
+    program_start = (csv0_c >> 8) & 0xFF
+
+    program_offset = program_start
+    for program_offset in range(program_offset, 136):
+      instruction = []
+      for i in range(4):
+        instruction += [read_word(nv2a_pgraph_rdi, 0x100000 + program_offset * 16 + i * 4)]
+      
+
+
+      instructions = VertexProgram.get_instruction(instruction)
+      print("0x%X: 0x%08X 0x%08X 0x%08X 0x%08X %s" % (program_offset,
+            instruction[0], instruction[1], instruction[2], instruction[3],
+            instructions[0]))
+      for instruction_str in instructions[1:]:
+        print("                                                %s", instruction_str)
+        
+
+      if instruction[0] & 0x80000000:
+        break
+
   else:
     assert(False)
 
@@ -71,32 +125,10 @@ if True:
   print("")
 
 
-if True:
-  print("\nFog:")
-
-  control_3 = read_word(pgraph, 0x00401958)
-
-  fog_mode = (control_3 >> 16) & 0x7
-  fog_modes_str = ('LINEAR', 'EXP', '<unknown:2>' 'EXP2', 'LINEAR_ABS', 'EXP_ABS', '<unknown:6>', 'EXP2_ABS')
-  print("Mode: %s" % (fog_modes_str[fog_mode]))
-
-  fog_enable = (control_3 >> 8) & 1
-  print("Enable: %s" % str(fog_enable))
-
-  fog_color = read_word(pgraph, 0x00401980)
-  print("Color: 0x%08X" % (fog_color))
-
-  fog_param0 = read_word(pgraph, 0x00401984)
-  print("Parameter[0] (bias): 0x%08X (%f)" % (fog_param0, decode_float(fog_param0)))
-  fog_param1 = read_word(pgraph, 0x00401988)
-  print("Parameter[1] (scale): 0x%08X (%f)" % (fog_param1, decode_float(fog_param1)))
-
-  print("")
-
 print("\nRegister combiners:")
 
 #FIXME: PArse this completly
-combinectl = read_word(pgraph, 0x00401940)
+combinectl = read_word(nv2a_mem, 0x401940)
 stage_count = combinectl & 0xF
 mux_bit = (combinectl >> 8) & 1
 unique_cf0 = (combinectl >> 12) & 1
@@ -183,9 +215,9 @@ def decode_register_combiner_stage(stage, is_alpha):
 
 
   if not is_alpha:
-    combine_input = read_word(pgraph, 0x00401900 + stage * 4)
+    combine_input = read_word(nv2a_mem, 0x401900 + stage * 4)
   else:
-    combine_input = read_word(pgraph, 0x004018C0 + stage * 4)
+    combine_input = read_word(nv2a_mem, 0x4018C0 + stage * 4)
 
   a = decode_in_reg(combine_input, 24, is_alpha)
   b = decode_in_reg(combine_input, 16, is_alpha)
@@ -193,13 +225,13 @@ def decode_register_combiner_stage(stage, is_alpha):
   d = decode_in_reg(combine_input, 0, is_alpha)
 
   if not is_alpha:
-    combine_output = read_word(pgraph, 0x00401920 + stage * 4)
+    combine_output = read_word(nv2a_mem, 0x401920 + stage * 4)
 
     #FIXME: Support these!
     b_to_a_ab = (combine_output >> 19) & 1
     b_to_a_cd = (combine_output >> 18) & 1
   else:
-    combine_output = read_word(pgraph, 0x004018E0 + stage * 4)
+    combine_output = read_word(nv2a_mem, 0x4018E0 + stage * 4)
     b_to_a_ab = False
     b_to_a_cd = False
 
@@ -306,12 +338,12 @@ def decode_register_combiner_stage(stage, is_alpha):
 
 def decode_final_register_combiner():
 
-  fc0 = read_word(pgraph, 0x00401944)
+  fc0 = read_word(nv2a_mem, 0x401944)
   a = decode_in_reg(fc0, 24)
   b = decode_in_reg(fc0, 16)
   c = decode_in_reg(fc0, 8)
   d = decode_in_reg(fc0, 0)
-  fc1 = read_word(pgraph, 0x00401948)
+  fc1 = read_word(nv2a_mem, 0x401948)
   e = decode_in_reg(fc1, 24)
   f = decode_in_reg(fc1, 16)
   g = decode_in_reg(fc1, 8, is_alpha=True) # Alpha scalar
@@ -346,8 +378,8 @@ for i in range(8):
     a = (combinefactor >> 24) & 0xFF
     return (r, g, b, a)
 
-  combinefactor0 = read_word(pgraph, 0x00401880 + 4 * i)
-  combinefactor1 = read_word(pgraph, 0x004018A0 + 4 * i)
+  combinefactor0 = read_word(nv2a_mem, 0x401880 + 4 * i)
+  combinefactor1 = read_word(nv2a_mem, 0x4018A0 + 4 * i)
 
   print("[%d] CF0.rgba = to_vec4(0x%02X, 0x%02X, 0x%02X, 0x%02X)" % (i, *get_rgba(combinefactor0)))
   print("    CF1.rgba = to_vec4(0x%02X, 0x%02X, 0x%02X, 0x%02X)" % (     get_rgba(combinefactor1)))
@@ -366,30 +398,55 @@ print("    output.a   = %s" % (final_combiner_str[2]))
 print("")
 
 
+if True:
+  print("\nFog:")
+
+  control_3 = read_word(nv2a_mem, 0x401958)
+
+  fog_mode = (control_3 >> 16) & 0x7
+  fog_modes_str = ('LINEAR', 'EXP', '<unknown:2>' 'EXP2', 'LINEAR_ABS', 'EXP_ABS', '<unknown:6>', 'EXP2_ABS')
+  print("Mode: %s" % (fog_modes_str[fog_mode]))
+
+  fog_enable = (control_3 >> 8) & 1
+  print("Enable: %s" % str(fog_enable))
+
+  fog_color = read_word(nv2a_mem, 0x401980)
+  print("Color: 0x%08X" % (fog_color))
+
+  fog_param0 = read_word(nv2a_mem, 0x401984)
+  print("Parameter[0] (bias): 0x%08X (%f)" % (fog_param0, decode_float(fog_param0)))
+  fog_param1 = read_word(nv2a_mem, 0x401988)
+  print("Parameter[1] (scale): 0x%08X (%f)" % (fog_param1, decode_float(fog_param1)))
+
+  print("")
+
+
+
+
 print("\nTiles:")
 
 # This configures how tiling works
-cfg0 = read_word(pfb, 0x200)
-cfg1 = read_word(pfb, 0x204)
+cfg0 = read_word(nv2a_mem, 0x100200)
+cfg1 = read_word(nv2a_mem, 0x100204)
 mcc = nv_tiles.mc_config(cfg0, cfg1)
 
 for i in range(8):
 
   # Also in PGRAPH 0x900?!
-  tile = read_word(pfb, 0x240 + 16 * i)
+  tile = read_word(nv2a_mem, 0x100240 + 16 * i)
   valid = tile & 1
   bank_sense = tile & 2
   address = tile & 0xFFFFC000
 
-  tlimit = read_word(pfb, 0x244 + 16 * i)
+  tlimit = read_word(nv2a_mem, 0x100244 + 16 * i)
   #FIXME: This is apparently 18+14 bits, much like address, but lower bits always set?
   assert((tlimit & 0x3FFF) == 0x3FFF)
 
-  tsize = read_word(pfb, 0x248 + 16 * i)
+  tsize = read_word(nv2a_mem, 0x100248 + 16 * i)
   pitch = tsize & 0xFFFF
   assert(pitch & 0xFF == 0x00)
 
-  tstatus = read_word(pfb, 0x24C + 16 * i)
+  tstatus = read_word(nv2a_mem, 0x10024C + 16 * i)
   prime = (1, 3, 5, 7)[tstatus & 3]
   factor = 1 << ((tstatus >> 4) & 7)
   region_valid = tstatus & 0x80000000
@@ -399,10 +456,10 @@ for i in range(8):
 
   print("[%d] %s; bank sense %d; address 0x%08X, limit 0x%08X, pitch 0x%X, prime %d, factor %d, region %s" % (i, valid_str, bank_sense, address, tlimit, pitch, prime, factor, region_valid_str))
 
-  fb_zcomp = read_word(pfb, 0x300 + 4 * i)
+  fb_zcomp = read_word(nv2a_mem, 0x100300 + 4 * i)
   zcomp_enabled = fb_zcomp & 0x80000000
 
-  pgraph_zcomp = read_word(pgraph, 0x980 + 4 * i)
+  pgraph_zcomp = read_word(nv2a_mem, 0x400980 + 4 * i)
 
   zcomp_enabled_str = "compressed" if zcomp_enabled else "uncompressed"
 
@@ -413,14 +470,14 @@ print("")
 
 print("\nFramebuffers:")
 for i in range(6):
-  boffset = read_word(pgraph, 0x820 + 4 * i) & 0x3FFFFFFF
-  bbase = read_word(pgraph, 0x838 + 4 * i) & 0x3FFFFFFF
+  boffset = read_word(nv2a_mem, 0x400820 + 4 * i) & 0x3FFFFFFF
+  bbase = read_word(nv2a_mem, 0x400838 + 4 * i) & 0x3FFFFFFF
   if i < 5:
-    bpitch = read_word(pgraph, 0x850 + 4 * i) & 0xFFFF
+    bpitch = read_word(nv2a_mem, 0x400850 + 4 * i) & 0xFFFF
     bpitch_str = "0x%08X" % bpitch
   else:
     bpitch_str = "----------"
-  blimit = read_word(pgraph, 0x864 + 4 * i)
+  blimit = read_word(nv2a_mem, 0x400864 + 4 * i)
   blimit_addresss = blimit & 0x3FFFFFFF
   blimit_addressing = blimit & 0x40000000
   blimit_type = blimit & 0x80000000
@@ -431,18 +488,18 @@ for i in range(6):
 print("")
 
 
-bswizzle2 = read_word(pgraph, 0x818)
+bswizzle2 = read_word(nv2a_mem, 0x400818)
 bswizzle2_ws = (bswizzle2 >> 16) & 0xF
 bswizzle2_hs = (bswizzle2 >> 24) & 0xF
 print("BSWIZZLE2: %d, %d" % (1 << bswizzle2_ws, 1 << bswizzle2_hs))
 
-bswizzle5 = read_word(pgraph, 0x81c)
+bswizzle5 = read_word(nv2a_mem, 0x40081c)
 bswizzle5_ws = (bswizzle5 >> 16) & 0xF
 bswizzle5_hs = (bswizzle5 >> 24) & 0xF
 print("BSWIZZLE5: %d, %d" % (1 << bswizzle5_ws, 1 << bswizzle5_hs))
 
 
-surface_type = read_word(pgraph, 0x710)
+surface_type = read_word(nv2a_mem, 0x400710)
 surface_addressing = surface_type & 3
 surface_anti_aliasing = (surface_type >> 4) & 3
 
@@ -457,8 +514,8 @@ print("Surface type %s; anti-aliasing: %s" % (surface_type_str, surface_anti_ali
 
 
 
-surface_clip_x = read_word(pgraph, 0x19B4)
-surface_clip_y = read_word(pgraph, 0x19B8)
+surface_clip_x = read_word(nv2a_mem, 0x4019B4)
+surface_clip_y = read_word(nv2a_mem, 0x4019B8)
 
 clip_x = (surface_clip_x >> 0) & 0xFFFF
 clip_y = (surface_clip_y >> 0) & 0xFFFF
@@ -472,13 +529,13 @@ clip_w, clip_h = helper.apply_anti_aliasing_factor(surface_anti_aliasing, clip_w
 width = clip_x + clip_w
 height = clip_y + clip_h
 
-color_pitch = read_word(pgraph, 0x858)
-depth_pitch = read_word(pgraph, 0x85C)
+color_pitch = read_word(nv2a_mem, 0x400858)
+depth_pitch = read_word(nv2a_mem, 0x40085C)
 
-draw_format = read_word(pgraph, 0x804)
+draw_format = read_word(nv2a_mem, 0x400804)
 format_color = (draw_format >> 12) & 0xF
 format_depth = (draw_format >> 18) & 0x3
-depth_float = (read_word(pgraph, 0x1990) >> 29) & 1
+depth_float = (read_word(nv2a_mem, 0x401990) >> 29) & 1
 depth_float_str = "float" if depth_float else "fixed"
 
 #FIXME: Load from texture formats instead?
