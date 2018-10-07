@@ -103,15 +103,29 @@ class mc_config:
       self.partbits = 2
       self.colbits_lo = 2
       self.burstbits = 0
-
+      #FIXME: !!!!!
+      #FIXME: This is still incomplete
+      #FIXME: !!!!!
 
 def tile_translate_addr(chipset, pitch, address, mode, bankoff, mcc):
+
+  #FIXME: !!!!!
+  #FIXME: mode is always 1 pre PFB_NV40 (?) according to mwk
+  #FIXME: !!!!!
   bankshift = mcc.mcbits + mcc.partbits + mcc.colbits_lo
   is_vram = (mode == 1) or (mode == 4)
   if (is_igp(chipset)):
     is_vram = 0
+
+
+  #FIXME: !!!!!
+  #FIXME: You'd think that this would always be taken for NV2A
+  #       However, NV2A is not really an IGP, so this might not be taken!
+  #       So, this needs further testing / analysis.
+  #FIXME: !!!!!
   if (is_vram == False):
     bankshift = 12
+
 
   valid, shift, factor = tile_pitch_valid(chipset, pitch)
   if (valid == False):
@@ -131,6 +145,13 @@ def tile_translate_addr(chipset, pitch, address, mode, bankoff, mcc):
 
   fb_type = pfb_type(chipset)
   if fb_type == PFB_NV10:
+
+    #FIXME: !!!!!
+    #FIXME: @MoochMcGee said that this NV10 codepath can probably be removed.
+    #       So if we do it, and it's bad, then blame it all on @MoochMcGee
+    #       (she said: "lol fair enough")
+    #FIXME: !!!!!
+
     iy = address >> (shift + 8) & ((1 << (bankshift - 8)) - 1)
     iaddr = ix | iy << 8
     if (y & 1):
@@ -154,6 +175,11 @@ def tile_translate_addr(chipset, pitch, address, mode, bankoff, mcc):
       part += 1 << (mcc.partbits - 2)
     part &= (1 << mcc.partbits) - 1
     if (chipset >= 0x30):
+
+      #FIXME: !!!!!
+      #FIXME: Will never be taken for NV2A
+      #FIXME: !!!!!
+
       bank = baddr & 3
       if (shift >= 2):
         bank ^= y << 1 & 2
