@@ -155,42 +155,44 @@ unique_cf1 = (combinectl >> 16) & 1
 
 mux_bit_str = "MSB" if mux_bit else "LSB"
 
-regs = tuple('r%d' % x for x in range(16))
-
 #FIXME: Possibly bad order!
-input_regs = ('ZERO',
-'CONSTANT_COLOR0_NV',
-'CONSTANT_COLOR1_NV',
-'FOG',
-'PRIMARY_COLOR_NV',
-'SECONDARY_COLOR_NV',
-'<invalid:6>',
-'<invalid:7>',
-'TEXTURE0_ARB',
-'TEXTURE1_ARB',
-'TEXTURE2_ARB',
-'TEXTURE3_ARB',
-'SPARE0_NV',
-'SPARE1_NV',
-'<invalid:14>',
-'<invalid:15>')
+input_regs = (
+  'ZERO',
+  'CONSTANT_COLOR0',
+  'CONSTANT_COLOR1',
+  'FOG',
+  'PRIMARY_COLOR',
+  'SECONDARY_COLOR',
+  '<invalid:6>',
+  '<invalid:7>',
+  'TEXTURE0',
+  'TEXTURE1',
+  'TEXTURE2',
+  'TEXTURE3',
+  'SPARE0',
+  'SPARE1',
+  'SPARE0_PLUS_SECONDARY_COLOR', # Only for final combiner (B, C, D)
+  'E_TIMES_F' # Only for final combiner (A, B, C, D)
+)
 
-output_regs = ('DISCARD_NV',
-'<invalid:1>'
-'<invalid:2>'
-'<invalid:3>'
-'PRIMARY_COLOR_NV',
-'SECONDARY_COLOR_NV',
-'<invalid:6>',
-'<invalid:7>',
-'TEXTURE0_ARB',
-'TEXTURE1_ARB',
-'TEXTURE2_ARB',
-'TEXTURE3_ARB',
-'SPARE0_NV',
-'SPARE1_NV',
-'<invalid:14>',
-'<invalid:15>')
+output_regs = (
+  'DISCARD',
+  '<invalid:1>',
+  '<invalid:2>',
+  '<invalid:3>',
+  'PRIMARY_COLOR',
+  'SECONDARY_COLOR',
+  '<invalid:6>',
+  '<invalid:7>',
+  'TEXTURE0',
+  'TEXTURE1',
+  'TEXTURE2',
+  'TEXTURE3',
+  'SPARE0',
+  'SPARE1',
+  '<invalid:14>',
+  '<invalid:15>'
+)
 
 mappings = ('UNSIGNED_IDENTITY',
             'UNSIGNED_INVERT',
@@ -210,17 +212,17 @@ mappings_code = ('max(0, %s)',
                  '%s',
                  '-%s')
 
-def decode_in_reg(word, shift, is_alpha = False):
+def decode_in_reg(word, shift, is_alpha = False, is_final_combiner_a = False, is_final_combiner_bcd = False):
   v = word >> shift
   mapping = (v >> 5) & 0x7
   alpha = (v >> 4) & 1
   source = (v >> 0) & 0xF
 
-  #FIXME: Only allowed in final combiner!
-  assert(source != 0xE) # SPARE0_PLUS_SECONDARY_COLOR_NV
-  assert(source != 0xF) # E_TIMES_F_NV
+  is_final_combiner_abcd = is_final_combiner_a or is_final_combiner_bcd
+  assert(is_final_combiner_bcd or source != 0xE) # SPARE0_PLUS_SECONDARY_COLOR_NV
+  assert(is_final_combiner_abcd or source != 0xF) # E_TIMES_F_NV
 
-  s = regs[source]
+  s = input_regs[source]
 
   #FIXME: This might be wrong?
   if not is_alpha:
@@ -231,7 +233,6 @@ def decode_in_reg(word, shift, is_alpha = False):
   return mappings_code[mapping] % s
 
 def decode_register_combiner_stage(stage, is_alpha):
-
 
   if not is_alpha:
     combine_input = read_word(nv2a_mem, 0x401900 + stage * 4)
@@ -326,7 +327,7 @@ def decode_register_combiner_stage(stage, is_alpha):
 
 
 
-  ab_out = regs[ab_dst]
+  ab_out = output_regs[ab_dst]
   if not is_alpha:
     ab_out += ".rgb"
   else:
@@ -334,9 +335,9 @@ def decode_register_combiner_stage(stage, is_alpha):
   ab_out += " = " + get_out(ab_dot_enable, gcc1, gcc2, gcc1)
   if b_to_a_ab:
     #FIXME: Will this still write RGB?
-    ab_out += "; %s.a = %s.b" % (regs[ab_dst], regs[ab_dst])
+    ab_out += "; %s.a = %s.b" % (input_regs[ab_dst], input_regs[ab_dst])
 
-  cd_out = regs[cd_dst]
+  cd_out = output_regs[cd_dst]
   if not is_alpha:
     cd_out += ".rgb"
   else:
@@ -344,9 +345,9 @@ def decode_register_combiner_stage(stage, is_alpha):
   cd_out += " = " + get_out(cd_dot_enable, gcc3, gcc4, gcc2)
   if b_to_a_cd:
     #FIXME: Will this still write RGB?
-    cd_out += "; %s.a = %s.b" % (regs[cd_dst], regs[cd_dst])
+    cd_out += "; %s.a = %s.b" % (input_regs[cd_dst], input_regs[cd_dst])
 
-  sum_out = regs[sum_dst]
+  sum_out = output_regs[sum_dst]
   if not is_alpha:
     sum_out += ".rgb"
   else:
@@ -358,10 +359,10 @@ def decode_register_combiner_stage(stage, is_alpha):
 def decode_final_register_combiner():
 
   fc0 = read_word(nv2a_mem, 0x401944)
-  a = decode_in_reg(fc0, 24)
-  b = decode_in_reg(fc0, 16)
-  c = decode_in_reg(fc0, 8)
-  d = decode_in_reg(fc0, 0)
+  a = decode_in_reg(fc0, 24, is_final_combiner_a=True)
+  b = decode_in_reg(fc0, 16, is_final_combiner_bcd=True)
+  c = decode_in_reg(fc0, 8, is_final_combiner_bcd=True)
+  d = decode_in_reg(fc0, 0, is_final_combiner_bcd=True)
   fc1 = read_word(nv2a_mem, 0x401948)
   e = decode_in_reg(fc1, 24)
   f = decode_in_reg(fc1, 16)
@@ -378,11 +379,11 @@ def decode_final_register_combiner():
 
   return (comment, rgb_str, a_str)
 
-print("- AB, CD and SUM run in parallel")
-print("- Each result is clamped to [-1, +1]")
+print("    # AB, CD and SUM run in parallel")
+print("    # Each result is clamped to [-1, +1]")
 
-print("unique_cf0: %d" % unique_cf0) # FIXME: Integrate in code
-print("unique_cf1: %d" % unique_cf1) # FIXME: Integrate in code
+print("    # unique_cf0: %d" % unique_cf0) # FIXME: Integrate in code
+print("    # unique_cf1: %d" % unique_cf1) # FIXME: Integrate in code
 for i in range(8):
   if i >= stage_count:
     # FIXME: Still print it, but clearly mark it as disabled
