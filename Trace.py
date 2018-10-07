@@ -674,10 +674,11 @@ class Tracer():
       method_nonincreasing = word & 0x40000000;
 
       # Download this command from Xbox
+      #FIXME: Halo: CE has cases where method_count is 0?!
       command = xbox.read(0x80000000 | (get_addr + 4), method_count * 4)
       
       #FIXME: Unpack all of them?
-      data = struct.unpack("<" + "L" * method_count, command)
+      data = struct.unpack("<%dL" % method_count, command)
       assert(len(data) == method_count)
 
       method_info = {}
