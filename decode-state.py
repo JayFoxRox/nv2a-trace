@@ -665,6 +665,9 @@ format_depth = (draw_format >> 18) & 0x3
 depth_float = (read_word(nv2a_mem, 0x401990) >> 29) & 1
 depth_float_str = "float" if depth_float else "fixed"
 
+#FIXME: Load from texture formats instead?
+#       surface_color_format_to_texture_format
+#       surface_zeta_format_to_texture_format
 color_formats = ('invalid',
                  'Y8',
                  'X1R5G5B5_Z1R5G5B5',
