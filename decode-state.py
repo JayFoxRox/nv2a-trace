@@ -611,7 +611,7 @@ for i in range(6):
 
   blimit_addressing_str = "tiled" if blimit_addressing else "linear"
   blimit_type_str = "in-memory" if blimit_type else "null"
-  print("[%d] 0x%08X, 0x%08X, pitch: %s, blimit 0x%08X, %s, %s" % (i, boffset, bbase, bpitch_str, blimit_addresss, blimit_addressing_str, blimit_type_str))
+  print("[%d] 0x%08X; 0x%08X; pitch: %s; blimit: 0x%08X, %s; %s" % (i, boffset, bbase, bpitch_str, blimit_addresss, blimit_addressing_str, blimit_type_str))
 print("")
 
 
