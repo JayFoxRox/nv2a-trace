@@ -95,7 +95,7 @@ if True:
       for j in range(4):
         # Mirror at 0xCC0000 ?
         v += [read_word(nv2a_pgraph_rdi, 0x170000 + i * 16 + j * 4)]
-      print("c[%d]: 0x%08X 0x%08X 0x%08X 0x%08X (%f, %f, %f, %f)" % (i - 96,
+      print("c[%d]: 0x%08X 0x%08X 0x%08X 0x%08X (%15f, %15f, %15f, %15f)" % (i - 96,
             v[0], v[1], v[2], v[3],
             decode_float(v[0]), decode_float(v[1]), decode_float(v[2]), decode_float(v[3])))
 
