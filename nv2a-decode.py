@@ -155,26 +155,26 @@ mux_bit_str = "MSB" if mux_bit else "LSB"
 
 #FIXME: Possibly bad order!
 input_regs = (
-  'ZERO',
-  'CONSTANT_COLOR0',
-  'CONSTANT_COLOR1',
-  'FOG',
+  'zero',
+  'color0',
+  'color1',
+  'fog',
   'PRIMARY_COLOR',
   'SECONDARY_COLOR',
   '<invalid:6>',
   '<invalid:7>',
-  'TEXTURE0',
-  'TEXTURE1',
-  'TEXTURE2',
-  'TEXTURE3',
-  'SPARE0',
-  'SPARE1',
+  'tex0',
+  'tex1',
+  'tex2',
+  'tex3',
+  'spare0',
+  'spare1',
   'SPARE0_PLUS_SECONDARY_COLOR', # Only for final combiner (B, C, D)
   'E_TIMES_F' # Only for final combiner (A, B, C, D)
 )
 
 output_regs = (
-  'DISCARD',
+  'discard',
   '<invalid:1>',
   '<invalid:2>',
   '<invalid:3>',
@@ -182,31 +182,22 @@ output_regs = (
   'SECONDARY_COLOR',
   '<invalid:6>',
   '<invalid:7>',
-  'TEXTURE0',
-  'TEXTURE1',
-  'TEXTURE2',
-  'TEXTURE3',
-  'SPARE0',
-  'SPARE1',
+  'tex0',
+  'tex1',
+  'tex2',
+  'tex3',
+  'spare0',
+  'spare1',
   '<invalid:14>',
   '<invalid:15>'
 )
 
-mappings = ('UNSIGNED_IDENTITY',
-            'UNSIGNED_INVERT',
-            'EXPAND_NORMAL',
-            'EXPAND_NEGATE',
-            'HALFBIAS_NORMAL',
-            'HALFBIAS_NEGATE',
-            'SIGNED_IDENTITY',
-            'SIGNED_NEGATE')
-
-mappings_code = ('max(0, %s)',
-                 '(1 - clamp(%s, 0, 1))',
-                 '(2 * max(0, %s) - 1)',
-                 '(-2 * max(0, %s) + 1)',
-                 '(max(0, %s) - 0.5)',
-                 '(-max(0, %s) + 0.5)',
+mappings_code = ('unsigned(%s)',
+                 'unsigned_invert(%s)',
+                 'expand(%s)',
+                 '-expand(%s)',
+                 'half_bias(%s)',
+                 '-half_bias(%s)',
                  '%s',
                  '-%s')
 
@@ -224,7 +215,7 @@ def decode_in_reg(word, shift, is_alpha = False, is_final_combiner_a = False, is
 
   #FIXME: This might be wrong?
   if not is_alpha:
-    s += ".aaa" if alpha else ".rgb"
+    s += ".a" if alpha else ".rgb"
   else:
     assert(source != 3) # FIXME: This is supposed to look for FOG
     s += ".a" if alpha else ".b"
@@ -260,12 +251,12 @@ def decode_register_combiner_stage(stage, is_alpha):
          'SHIFTLEFTBY1_BIAS',
          'SHIFTLEFTBY2',
          'SHIFTRIGHTBY1')
-  ops_code = ('%s',
-              '(%s - 0.5)',
-              '(%s * 2)',
-              '((%s - 0.5) * 2)',
-              '(%s * 4)',
-              '(%s / 2)')
+  ops_code = ('',
+              'bias_by_negative_one_half();',
+              'scale_by_two();',
+              'bias_by_negative_one_half_scale_by_two();',
+              'scale_by_four();',
+              'scale_by_one_half();')
   mux_enable = (combine_output >> 14) & 1
   ab_dot_enable = (combine_output >> 13) & 1
   cd_dot_enable = (combine_output >> 12) & 1
@@ -280,14 +271,14 @@ def decode_register_combiner_stage(stage, is_alpha):
     if not is_alpha:
 
       if is_dot_product == False:
-        res_str = op_code % gcc_x
+        res_str = gcc_x
       else:
-        res_str = op_code % gcc_y
+        res_str = gcc_y
 
     else:
 
       if is_dot_product == False:
-        res_str = op_code % gcc_z
+        res_str = gcc_z
       else:
         res_str = "<invalid>" # FIXME: Assert?
         assert(False)
@@ -298,29 +289,29 @@ def decode_register_combiner_stage(stage, is_alpha):
 
   if not is_alpha:
     gcc1 = "%s * %s" % (a, b)
-    gcc2 = "vec3(dot(%s, %s))" % (a, b)
+    gcc2 = "%s . %s" % (a, b)
     gcc3 = "%s * %s" % (c, d)
-    gcc4 = "vec3(dot(%s, %s))" % (c, d)
-    gcc5 = "%s + %s" % (gcc1, gcc3)
-    gcc6 = "mix(%s, %s, SPARE0_NV.a & %s)" % (gcc3, gcc1, mux_bit_str)
+    gcc4 = "%s . %s" % (c, d)
+    gcc5 = "sum();"
+    gcc6 = "mux(); // SPARE0_NV.a & %s" % (mux_bit_str)
   else:
     gcc1 = "%s * %s" % (a, b)
     gcc2 = "%s * %s" % (c, d)
-    gcc3 = "%s + %s" % (gcc1, gcc2)
-    gcc4 = "mix(%s, %s, SPARE0_NV.a & %s)" % (gcc2, gcc1, mux_bit_str)
+    gcc3 = "sum();"
+    gcc4 = "mux(); // SPARE0_NV.a & %s" % (mux_bit_str)
 
   def get_sum_out(mux_enable):
     if not is_alpha:
       if mux_enable == False:
-        rgb_str = op_code % gcc5
+        rgb_str = gcc5
       else:
-        rgb_str = op_code % gcc6
+        rgb_str = gcc6
       return rgb_str
     else:
       if mux_enable == False:
-        a_str = op_code % gcc3
+        a_str = gcc3
       else:
-        a_str = op_code % gcc4
+        a_str = gcc4
       return a_str
 
 
@@ -329,7 +320,7 @@ def decode_register_combiner_stage(stage, is_alpha):
   if not is_alpha:
     ab_out += ".rgb"
   else:
-    ab_out += ".a  "
+    ab_out += ".a"
   ab_out += " = " + get_out(ab_dot_enable, gcc1, gcc2, gcc1)
   if b_to_a_ab:
     #FIXME: Will this still write RGB?
@@ -339,7 +330,7 @@ def decode_register_combiner_stage(stage, is_alpha):
   if not is_alpha:
     cd_out += ".rgb"
   else:
-    cd_out += ".a  "
+    cd_out += ".a"
   cd_out += " = " + get_out(cd_dot_enable, gcc3, gcc4, gcc2)
   if b_to_a_cd:
     #FIXME: Will this still write RGB?
@@ -349,10 +340,10 @@ def decode_register_combiner_stage(stage, is_alpha):
   if not is_alpha:
     sum_out += ".rgb"
   else:
-    sum_out += ".a  "
+    sum_out += ".a"
   sum_out += " = " + get_sum_out(mux_enable)
 
-  return (ab_out, cd_out, sum_out) #FIXME
+  return (ab_out, cd_out, sum_out, op_code)
 
 def decode_final_register_combiner():
 
@@ -371,48 +362,111 @@ def decode_final_register_combiner():
   specular_add_invr5 = (fc1 >> 6) & 1
   specular_add_invr12 = (fc1 >> 5) & 1
 
-  comment = "E: %s; F: %s; clamp: %d; invr5: %d; invr12: %d" % (e, f, specular_clamp, specular_add_invr5, specular_add_invr12)
-  rgb_str = "mix(%s, %s, %s) + %s" % (c, b, a, d)
+  comment = "invr5: %d; invr12: %d" % (specular_add_invr5, specular_add_invr12)
+
+  final_product = "final_product = %s * %s;" % (e, f)
+
+  if specular_clamp:
+    clamp_color_sum = "clamp_color_sum();"
+  else:
+    clamp_color_sum = ""
+
+  rgb_str = "lerp(%s, %s, %s) + %s" % (c, b, a, d)
   a_str = "%s" % (g)
 
-  return (comment, rgb_str, a_str)
+  return (comment, clamp_color_sum, final_product, rgb_str, a_str)
 
-print("    # AB, CD and SUM run in parallel")
-print("    # Each result is clamped to [-1, +1]")
+def get_rgba(combinefactor):
+  r = (combinefactor >> 16) & 0xFF
+  g = (combinefactor >> 8) & 0xFF
+  b = (combinefactor >> 0) & 0xFF
+  a = (combinefactor >> 24) & 0xFF
+  return (r, g, b, a)
 
-print("    # unique_cf0: %d" % unique_cf0) # FIXME: Integrate in code
-print("    # unique_cf1: %d" % unique_cf1) # FIXME: Integrate in code
+def get_rgba_string(combinerfactor):
+  r, g, b, a = get_rgba(combinerfactor)
+  return "(%s, %s, %s, %s); // (0x%02X, 0x%02X, 0x%02X, 0x%02X)" % \
+          (r/255.0, g/255.0, b/255.0, a/255.0, r, g, b, a)
+
+print("!!RC1.0")
+print("")
+print("//Note: AB, CD and SUM run in parallel")
+print("//      Each result is clamped to [-1, +1]")
+print("")
+if not unique_cf0:
+  combinefactor0 = read_word(nv2a_mem, 0x401880 + 4 * 0)
+  print("const color0 = %s" % get_rgba_string(unique_cf0)) # FIXME: Integrate in code
+  color0_format = "// const color0 = %s"
+else:
+  print("// Unique color0 per-stage")
+  color0_format = "const color0 = %s"
+if not unique_cf1:
+  combinefactor1 = read_word(nv2a_mem, 0x4018A0 + 4 * 0)
+  print("const color1 = %s" % get_rgba_string(unique_cf1)) # FIXME: Integrate in code
+  color1_format = "// const color1 = %s"
+else:
+  print("// Unique color1 per-stage")
+  color1_format = "const color1 = %s"
 for i in range(8):
-  if i >= stage_count:
-    # FIXME: Still print it, but clearly mark it as disabled
-    break
-  rbg_str = decode_register_combiner_stage(i, is_alpha = False)
-  a_str = decode_register_combiner_stage(i, is_alpha = True)
+  print("")
+  if i == stage_count:
+    print("")
+    print("// End of enabled general register combiners")
+    print("")
 
-  def get_rgba(combinefactor):
-    r = (combinefactor >> 16) & 0xFF
-    g = (combinefactor >> 8) & 0xFF
-    b = (combinefactor >> 0) & 0xFF
-    a = (combinefactor >> 24) & 0xFF
-    return (r, g, b, a)
+  print("// Stage %d" % i)
+  if i >= stage_count:
+    print("/* (Disabled)")
+  print("{")
+
+  rgb_str = decode_register_combiner_stage(i, is_alpha = False)
+  a_str = decode_register_combiner_stage(i, is_alpha = True)
 
   combinefactor0 = read_word(nv2a_mem, 0x401880 + 4 * i)
   combinefactor1 = read_word(nv2a_mem, 0x4018A0 + 4 * i)
 
-  print("[%d] CF0.rgba = to_vec4(0x%02X, 0x%02X, 0x%02X, 0x%02X)" % (i, *get_rgba(combinefactor0)))
-  print("    CF1.rgba = to_vec4(0x%02X, 0x%02X, 0x%02X, 0x%02X)" % (     get_rgba(combinefactor1)))
-  print("    %s # AB" % (rbg_str[0]))
-  print("    %s" %      (a_str[0]))
-  print("    %s # CD" % (rbg_str[1]))
-  print("    %s" %      (a_str[1]))
-  print("    %s # SUM" % (rbg_str[2]))
-  print("    %s" %       (a_str[2]))
+  print("  " + color0_format % (get_rgba_string(combinefactor0)))  
+  print("  " + color1_format % (get_rgba_string(combinefactor1)))
+  print("  rgb {")
+  print("    %s;" % (rgb_str[0]))
+  print("    %s;" % (rgb_str[1]))
+  print("    %s" % (rgb_str[2]))
+  if (rgb_str[3]):
+    print("    %s" % (rgb_str[3]))
+  print("  }")
+  print("  alpha {")
+  print("    %s;" % (a_str[0]))
+  print("    %s;" % (a_str[1]))
+  print("    %s" % (a_str[2]))
+  if (a_str[3]):
+    print("    %s" % (a_str[3]))
+  print("  }")
+
+  print("}")
+  if i >= stage_count:
+    print("*/")
+
+print("")
 final_combiner_str = decode_final_register_combiner()
-print("[*] # %s" % (final_combiner_str[0]))
-print("    CF0.rgba = to_vec4(...)") # FIXME: 0x004019AC
-print("    CF1.rgba = to_vec4(...)") # FIXME: 0x004019B0
-print("    output.rgb = %s" % (final_combiner_str[1]))
-print("    output.a   = %s" % (final_combiner_str[2]))
+print("// %s" % (final_combiner_str[0]))
+combinefactor0 = read_word(nv2a_mem, 0x4019AC + 4 * i)
+combinefactor1 = read_word(nv2a_mem, 0x4019B0 + 4 * i)
+print("const color0 = %s" % get_rgba_string(combinefactor0))
+print("const color1 = %s" % get_rgba_string(combinefactor1))
+if final_combiner_str[1]:
+  print(final_combiner_str[1]) # color_clamp_sum
+print("%s" % (final_combiner_str[2])) # final_product
+
+#fragment_rgb = lerp(FinalMappedRegister, FinalMappedRegister, FinalMappedRegister) + FinalMappedRegister;
+#fragment_rgb = FinalMappedRegister + lerp(FinalMappedRegister, FinalMappedRegister, FinalMappedRegister);
+#fragment_rgb = lerp(FinalMappedRegister, FinalMappedRegister, FinalMappedRegister);
+#fragment_rgb = FinalMappedRegister * FinalMappedRegister;
+#fragment_rgb = FinalMappedRegister * FinalMappedRegister + FinalMappedRegister;
+#fragment_rgb = FinalMappedRegister;
+#fragment_rgb = FinalMappedRegister + FinalMappedRegister;
+
+print("out.rgb = %s;" % (final_combiner_str[3]))
+print("out.a = %s;" % (final_combiner_str[4]))
 print("")
 
 
