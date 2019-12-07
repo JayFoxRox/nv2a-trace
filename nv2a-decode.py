@@ -75,7 +75,7 @@ for i in range(8):
 print("")
 
 # Dump pipeline
-if True:
+if False:
   csv0_d = read_word(nv2a_mem, 0x400FB4)
 
   pipeline = (csv0_d >> 30) & 0x3
