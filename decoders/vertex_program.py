@@ -202,3 +202,42 @@ def get_instruction(instruction):
     operations += [ilu_str]
 
   return operations
+
+
+def dump(state):
+  print("<Program>") # FIXME: Disassemble the program here
+
+  print("Constants:")
+  for i in range(0, 192):
+    v = []
+    for j in range(4):
+      # Mirror at 0xCC0000 ?
+      v += [state.read_nv2a_pgraph_rdi_word(0x170000 + i * 16 + j * 4)]
+    print("c[%d]: 0x%08X 0x%08X 0x%08X 0x%08X (%15f, %15f, %15f, %15f)" % (i - 96,
+          v[0], v[1], v[2], v[3],
+          decode_float(v[0]), decode_float(v[1]), decode_float(v[2]), decode_float(v[3])))
+
+  print("Instructions:")
+  csv0_c = state.read_nv2a_device_memory_word(0x400FB8)
+  program_start = (csv0_c >> 8) & 0xFF
+
+  program_offset = program_start
+  for program_offset in range(program_offset, 136):
+    instruction = []
+    for i in range(4):
+      instruction += [state.read_nv2a_pgraph_rdi_word(0x100000 + program_offset * 16 + i * 4)]
+    
+
+
+    instructions = VertexProgram.get_instruction(instruction)
+    print("0x%02X: 0x%08X 0x%08X 0x%08X 0x%08X %s" % (program_offset,
+          instruction[0], instruction[1], instruction[2], instruction[3],
+          instructions[0]))
+    for instruction_str in instructions[1:]:
+      print("                                                  %s" % (instruction_str))
+
+    # Break if this was the final instruction
+    #FIXME: What if there is no marker at the last program word?
+    #       We should be able to see such problems in the output
+    if instruction[0] & 0x00000001:
+      break
