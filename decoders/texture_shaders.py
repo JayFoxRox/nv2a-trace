@@ -14,14 +14,14 @@ def dump(state):
     "BRDF", #           0x08
     "DOT_ST", #         0x09
     "DOT_ZW", #        0x0A
-    "PS_TEXTUREMODES_DOT_RFLCT_DIFF", # 0x0B
-    "DOT_REFLECT_SPECULAR", # 0x0C
+    "PS_TEXTUREMODES_DOT_RFLCT_DIFF", # 0x0B DOT_PRODUCT_DIFFUSE_CUBE_MAP_NV
+    "PS_TEXTUREMODES_DOT_RFLCT_SPEC", # 0x0C DOT_PRODUCT_CONST_EYE_REFLECT_CUBE_MAP_NV?
     "DOT_STR_3D", #     0x0D
     "PS_TEXTUREMODES_DOT_STR_CUBE", #   0x0E
     "DEPENDENT_AR", #   0x0F
     "DEPENDENT_GB", #   0x10
     "PS_TEXTUREMODES_DOTPRODUCT", #0x11
-    "DOT_REFLECT_SPECULAR_CONST" # 0x12
+    "PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST" # 0x12
   ]
 
   assert(len(ops) == 0x13)
@@ -82,8 +82,25 @@ def dump(state):
         assert(False)
     elif stage[i] == "PS_TEXTUREMODES_DOT_RFLCT_DIFF":
       assert(False)
-    elif stage[i] == "DOT_REFLECT_SPECULAR":
-      assert(False)
+    elif stage[i] == "PS_TEXTUREMODES_DOT_RFLCT_SPEC":
+      if stage[i-1] == "PS_TEXTUREMODES_DOTPRODUCT":
+        if stage[i-2] == "PS_TEXTUREMODES_DOTPRODUCT":
+          i -= 2
+          results[i+0] = "dot_product_reflect_cube_map_const_eye_1_of_3();"
+          results[i+1] = "dot_product_reflect_cube_map_const_eye_2_of_3();"
+          results[i+2] = "dot_product_reflect_cube_map_const_eye_3_of_3();"
+        else:
+          assert(False)
+      elif stage[i-1] == "PS_TEXTUREMODES_DOT_RFLCT_DIFF":
+        if stage[i-2] == "PS_TEXTUREMODES_DOTPRODUCT":
+          i -= 2
+          results[i+0] = "dot_product_cube_map_and_reflect_cube_map_const_eye_1_of_3();"
+          results[i+1] = "dot_product_cube_map_and_reflect_cube_map_const_eye_2_of_3();"
+          results[i+2] = "dot_product_cube_map_and_reflect_cube_map_const_eye_3_of_3();"
+        else:
+          assert(False)
+      else:
+        assert(False)
     elif stage[i] == "DOT_STR_3D":
       assert(False)
     elif stage[i] == "PS_TEXTUREMODES_DOT_STR_CUBE":
@@ -111,7 +128,7 @@ def dump(state):
       results[i] = "dependent_gb();"
     elif stage[i] == "PS_TEXTUREMODES_DOTPRODUCT":
       assert(False)
-    elif stage[i] == "DOT_REFLECT_SPECULAR_CONST":
+    elif stage[i] == "PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST":
       assert(False)
     else:
       assert(False)
