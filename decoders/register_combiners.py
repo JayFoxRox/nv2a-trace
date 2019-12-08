@@ -306,8 +306,8 @@ def dump(state):
   print("")
   final_combiner_str = decode_final_register_combiner()
   print("// %s" % (final_combiner_str[0]))
-  combinefactor0 = state.read_nv2a_device_memory_word(0x4019AC + 4 * i)
-  combinefactor1 = state.read_nv2a_device_memory_word(0x4019B0 + 4 * i)
+  combinefactor0 = state.read_nv2a_device_memory_word(0x4019AC)
+  combinefactor1 = state.read_nv2a_device_memory_word(0x4019B0)
   print("const color0 = %s" % get_rgba_string(combinefactor0))
   print("const color1 = %s" % get_rgba_string(combinefactor1))
   if final_combiner_str[1]:
