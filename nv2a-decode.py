@@ -2,12 +2,6 @@
 
 import sys
 
-#from PIL import Image, ImageDraw
-
-#import Texture
-
-#import helper
-
 import state
 
 
@@ -53,7 +47,6 @@ if False:
   from decoders import tiles
   tiles.dump(state)
 
-if False:
-  from decoders import surfaces
-  surfaces.dump(state)
+from decoders import surfaces
+surfaces.dump(state)
 

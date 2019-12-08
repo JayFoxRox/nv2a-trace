@@ -1,3 +1,10 @@
+import sys
+
+from PIL import Image, ImageDraw
+
+import helper
+import Texture
+
 def dump(state):
   print("\nFramebuffers:")
 
@@ -141,6 +148,15 @@ def dump(state):
 
 
   assert(height % 16 == 0)
+
+
+
+  color_offset = state.read_nv2a_device_memory_word(0x400828)
+  depth_offset = state.read_nv2a_device_memory_word(0x40082C)
+  color_base = state.read_nv2a_device_memory_word(0x400840)
+  depth_base = state.read_nv2a_device_memory_word(0x400844)
+  mem_color = state.read_memory(color_base + color_offset, color_pitch * height)
+  mem_depth = state.read_memory(depth_base + depth_offset, depth_pitch * height)
 
   if mem_color:
     mem_untiled = mem_color #untile(mem_color, color_tile_lookup, bpp)
