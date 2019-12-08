@@ -102,18 +102,14 @@ def dump(state):
       b_to_a_cd = False
 
     op = (combine_output >> 15) & 7
-    ops = ('NOSHIFT',
-           'NOSHIFT_BIAS',
-           'SHIFTLEFTBY1',
-           'SHIFTLEFTBY1_BIAS',
-           'SHIFTLEFTBY2',
-           'SHIFTRIGHTBY1')
     ops_code = ('',
                 'bias_by_negative_one_half();',
                 'scale_by_two();',
                 'bias_by_negative_one_half_scale_by_two();',
                 'scale_by_four();',
-                'scale_by_one_half();')
+                'scale_by_one_half();',
+                '/* <invalid-modifier:6> */', #FIXME: Used in disabled code!
+                '/* <invalid-modifier:7> */') #FIXME: Used in disabled code!
     mux_enable = (combine_output >> 14) & 1
     ab_dot_enable = (combine_output >> 13) & 1
     cd_dot_enable = (combine_output >> 12) & 1
